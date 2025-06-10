@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    /* Setzt das globale Dark-Theme und die Schriftart */
+    @apply bg-gray-900 text-gray-200;
+    font-family: 'Verdana', sans-serif;
+  }
+  input, select, textarea {
+    @apply bg-gray-800 text-gray-200 border border-gray-600 placeholder-gray-400 focus:ring-2 focus:ring-sky-700 focus:border-sky-700;
+  }
+}
+
+/* Eigene wiederverwendbare Klassen für Buttons, die wir in der App nutzen */
+@layer components {
+    .btn {
+        @apply px-5 py-2 font-semibold rounded-lg shadow-md disabled:bg-gray-500 disabled:cursor-not-allowed;
+    }
+    .btn-primary {
+        @apply bg-sky-700 hover:bg-sky-600 text-white;
+    }
+    .btn-success {
+        @apply bg-emerald-700 hover:bg-emerald-600 text-white;
+    }
+    .btn-danger {
+        @apply bg-rose-700 hover:bg-rose-600 text-white;
+    }
+    .btn-edit {
+        @apply bg-amber-600 hover:bg-amber-500 text-white text-sm px-3 py-1;
+    }
+    .btn-special {
+        @apply bg-indigo-700 hover:bg-indigo-600 text-white;
+    }
+    .block-title {
+        @apply text-xl font-bold text-white mb-4 border-b border-gray-600 pb-2;
+    }
+}
