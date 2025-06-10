@@ -2,6 +2,7 @@
 export default {
   content: [
     "./index.html",
+    "./index.css", // Hinzugefügt, um sicherzustellen, dass Tailwind diese Datei verarbeitet
     "./src/**/*.{js,ts,jsx,tsx,css}",
   ],
   theme: {

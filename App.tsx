@@ -5,8 +5,8 @@ import type { Firestore } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, query, where, getDocs, Timestamp, addDoc } from 'firebase/firestore';
-import { RecordForm } from './RecordForm';
-import { SheetImporter } from './SheetImporter';
+import { RecordForm } from './src/RecordForm';
+import { SheetImporter } from './src/SheetImporter';
 
 // Interfaces
 export interface MeterReadings {

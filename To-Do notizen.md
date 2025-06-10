@@ -12,6 +12,23 @@ Startseite Rosentahler
 1.	Spalte Wohnungs-ID 2. Spalte die Lage.
 
 
+## Anweisung Doppelparkplätze ✅ ERLEDIGT
+
+**PROBLEM GELÖST:** Datensätze mit einem "P" in der Hausnummer werden jetzt korrekt als Parkplatzmieter identifiziert und mit gekürzten Datensätzen übernommen (Hausnummer, Wohnungs-ID, Mieter 1 Name, Mail + Telefon, Kaltmiete, Gesamtmiete, Stellplatz 1 - 4, Vertrag Datum, Vertragsende, IBAN, Mandatsreferenz). 
+
+**NEUE FUNKTIONALITÄT:** Wenn in der Wohnungs-ID 2 Zahlen stehen (z.B. "9+2" oder "14+15"), werden diese Daten automatisch in 2 separate Parkplatzmieter-Datensätze aufgeteilt. Beim Beispiel "P14+15" erstellt der Importer nun korrekt 2 Datensätze: P14 und P15, jeweils mit allen genannten Feldern.
+
+**Verbesserungen:**
+- Robuste Erkennung von zusammengesetzten Parkplatz-IDs (Format: "14+15", "2+9", "P14+P15", etc.)
+- Fallback-Suche in Stellplatz-Spalten wenn apartmentId leer ist
+- Automatische Entfernung von "P"-Präfixen aus IDs
+- Überspringen von leeren Parkplatz-Zeilen ohne Fehlerbehandlung (Platzhalter-Zeilen)
+- Vollständige Übernahme aller relevanten Felder für Parkplätze
+- Bessere Fehlerbehandlung und Debug-Ausgaben
+- Korrekte Berechnung der Gesamtmiete aus allen Mietkomponenten
+- Unterstützung verschiedener Trennzeichen: +, Komma, Semikolon, Leerzeichen
+
+
 
 
 

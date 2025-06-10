@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 // import type { Firestore } from "firebase/firestore";
 // import { collection, addDoc, Timestamp, writeBatch, doc } from "firebase/firestore";
-import type { TenantRecord } from "./App";
+import type { TenantRecord } from "../App";
 
 interface RecordFormProps {
   // db: Firestore | null;
