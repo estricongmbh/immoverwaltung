@@ -105,49 +105,60 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                     setIsLoading(false); return;
                 }
                 const newHeaders = rawData[headerRowIdx].map((header, idx) => header || `Spalte ${idx + 1}`);
-                setHeaders(newHeaders);
-
-                // Automapping je nach effectiveDate (Stichtag)
+                setHeaders(newHeaders);                // Automapping je nach effectiveDate (Stichtag) UND selectedObject
                 let stichtag = effectiveDate;
                 // Fallback: versuche aus selectedSheet zu extrahieren, falls effectiveDate leer
                 if (!stichtag && selectedSheet) {
                     const dateMatch = selectedSheet.match(/\d{4}-\d{2}-\d{2}/);
                     if (dateMatch) stichtag = dateMatch[0];
                 }
-                // Default: Mapping MIT Stellplatz 3 (ab 2024-11-01)
-                let autoMapping: { [key: number]: string } = {
-                    0: "details.houseNumber",
-                    1: "details.location",
-                    2: "apartmentId",
-                    3: "tenants.tenant1.name",
-                    4: "tenants.tenant2.name",
-                    5: "details.area",
-                    6: "rent.base",
-                    8: "rent.utilities",
-                    9: "rent.heating",
-                    11: "details.stellplatz1",
-                    12: "details.stellplatz2",
-                    13: "details.stellplatz3",
-                    15: "details.persons",
-                    17: "tenants.tenant1.email",
-                    18: "tenants.tenant1.phone",
-                    19: "tenants.tenant2.email",
-                    20: "tenants.tenant2.phone",
-                    21: "contract.contractDate",
-                    22: "contract.moveInDate",
-                    23: "contract.kautionHoehe",
-                    24: "contract.kautionszahlungen",
-                    27: "meterReadings.wasserzaehlerNrAnalog",
-                    28: "meterReadings.wasserzaehlerStandAnalog",
-                    29: "meterReadings.wasserzaehlerNrDigital",
-                    30: "meterReadings.wasserzaehlerStandDigital",
-                    31: "meterReadings.heizungNr",
-                    32: "meterReadings.heizungStand",
-                    33: "meterReadings.stromNr",
-                    34: "meterReadings.stromStand"
-                };
-                // Wenn das Stichtagsdatum vor 2024-11-01 liegt, Mapping OHNE Stellplatz 3
-                if (stichtag && stichtag < "2024-11-01") {
+                
+                let autoMapping: { [key: number]: string } = {};
+                
+                // Objektspezifische Mappings
+                if (selectedObject === 'PAS') {
+                    // PAS-spezifisches Mapping basierend auf der bereitgestellten Tabelle
+                    autoMapping = {
+                        0: "apartmentId",              // Spalte 1: Wohnungs-ID
+                        // Spalte 2: nicht importieren
+                        2: "details.location",         // Spalte 3: Lage
+                        3: "tenants.tenant1.name",     // Spalte 4: Mieter 1 Name
+                        4: "tenants.tenant2.name",     // Spalte 5: Mieter 2 Name
+                        5: "details.area",             // Spalte 6: Fläche (m²)
+                        6: "details.persons",          // Spalte 7: Personenanzahl
+                        7: "rent.base",                // Spalte 8: Kaltmiete
+                        // Spalte 9: nicht importieren
+                        9: "rent.utilities",           // Spalte 10: Nebenkosten
+                        // Spalte 11: nicht importieren
+                        11: "rent.heating",            // Spalte 12: Heizkosten
+                        // Spalten 13-17: nicht importieren
+                        17: "tenants.tenant1.email",  // Spalte 18: Mieter 1 Mail
+                        18: "tenants.tenant1.phone",  // Spalte 19: Mieter 1 Telefon
+                        19: "tenants.tenant2.email",  // Spalte 20: Mieter 2 Mail
+                        20: "tenants.tenant2.phone",  // Spalte 21: Mieter 2 Telefon
+                        21: "contract.contractDate",  // Spalte 22: Vertrag Datum
+                        22: "contract.moveInDate",    // Spalte 23: Vertrag Einzug
+                        23: "contract.kautionHoehe",  // Spalte 24: Kaution Höhe
+                        // Spalte 25: nicht importieren
+                        25: "meterReadings.wasserzaehlerNrAnalog",     // Spalte 26: Wasser-Nr. analog
+                        26: "meterReadings.wasserzaehlerStandAnalog",  // Spalte 27: Wasser-Stand analog
+                        27: "meterReadings.wasserzaehlerNrDigital",    // Spalte 28: Wasser-Nr. Digital
+                        28: "meterReadings.wasserzaehlerStandDigital", // Spalte 29: Wasser-Stand Digital
+                        29: "meterReadings.heizungNr",                 // Spalte 30: Heizung-Nr.
+                        30: "meterReadings.heizungStand",              // Spalte 31: Heizung-Stand
+                        31: "meterReadings.stromNr",                   // Spalte 32: Strom-Nr.
+                        32: "meterReadings.stromStand"                 // Spalte 33: Strom-Stand
+                    };
+                } else if (selectedObject === 'RITA') {
+                    // RITA-spezifisches Mapping (kann später angepasst werden)
+                    autoMapping = {
+                        0: "apartmentId",              // Spalte 1: Wohnungs-ID
+                        1: "details.location",         // Spalte 2: Lage
+                        // Weitere Mappings für RITA können hier hinzugefügt werden
+                    };
+                } else if (selectedObject === 'TRI' || selectedObject === 'TRI-P') {
+                    // Bestehendes TRI/TRI-P Mapping mit Datum-Logik
+                    // Default: Mapping MIT Stellplatz 3 (ab 2024-11-01)
                     autoMapping = {
                         0: "details.houseNumber",
                         1: "details.location",
@@ -160,26 +171,60 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                         9: "rent.heating",
                         11: "details.stellplatz1",
                         12: "details.stellplatz2",
-                        // 13 entfällt (kein Stellplatz 3)
-                        14: "details.persons",
-                        16: "tenants.tenant1.email",
-                        17: "tenants.tenant1.phone",
-                        18: "tenants.tenant2.email",
-                        19: "tenants.tenant2.phone",
-                        20: "contract.contractDate",
-                        21: "contract.moveInDate",
-                        22: "contract.kautionHoehe",
-                        23: "contract.kautionszahlungen",
-                        26: "meterReadings.wasserzaehlerNrAnalog",
-                        27: "meterReadings.wasserzaehlerStandAnalog",
-                        28: "meterReadings.wasserzaehlerNrDigital",
-                        29: "meterReadings.wasserzaehlerStandDigital",
-                        30: "meterReadings.heizungNr",
-                        31: "meterReadings.heizungStand",
-                        32: "meterReadings.stromNr",
-                        33: "meterReadings.stromStand"
+                        13: "details.stellplatz3",
+                        15: "details.persons",
+                        17: "tenants.tenant1.email",
+                        18: "tenants.tenant1.phone",
+                        19: "tenants.tenant2.email",
+                        20: "tenants.tenant2.phone",
+                        21: "contract.contractDate",
+                        22: "contract.moveInDate",
+                        23: "contract.kautionHoehe",
+                        24: "contract.kautionszahlungen",
+                        27: "meterReadings.wasserzaehlerNrAnalog",
+                        28: "meterReadings.wasserzaehlerStandAnalog",
+                        29: "meterReadings.wasserzaehlerNrDigital",
+                        30: "meterReadings.wasserzaehlerStandDigital",
+                        31: "meterReadings.heizungNr",
+                        32: "meterReadings.heizungStand",
+                        33: "meterReadings.stromNr",
+                        34: "meterReadings.stromStand"
                     };
-                }                setMapping(autoMapping);                // Daten ab der nächsten Zeile
+                    // Wenn das Stichtagsdatum vor 2024-11-01 liegt, Mapping OHNE Stellplatz 3
+                    if (stichtag && stichtag < "2024-11-01") {
+                        autoMapping = {
+                            0: "details.houseNumber",
+                            1: "details.location",
+                            2: "apartmentId",
+                            3: "tenants.tenant1.name",
+                            4: "tenants.tenant2.name",
+                            5: "details.area",
+                            6: "rent.base",
+                            8: "rent.utilities",
+                            9: "rent.heating",
+                            11: "details.stellplatz1",
+                            12: "details.stellplatz2",
+                            // 13 entfällt (kein Stellplatz 3)
+                            14: "details.persons",
+                            16: "tenants.tenant1.email",
+                            17: "tenants.tenant1.phone",
+                            18: "tenants.tenant2.email",
+                            19: "tenants.tenant2.phone",
+                            20: "contract.contractDate",
+                            21: "contract.moveInDate",
+                            22: "contract.kautionHoehe",
+                            23: "contract.kautionszahlungen",
+                            26: "meterReadings.wasserzaehlerNrAnalog",
+                            27: "meterReadings.wasserzaehlerStandAnalog",
+                            28: "meterReadings.wasserzaehlerNrDigital",
+                            29: "meterReadings.wasserzaehlerStandDigital",
+                            30: "meterReadings.heizungNr",
+                            31: "meterReadings.heizungStand",
+                            32: "meterReadings.stromNr",
+                            33: "meterReadings.stromStand"
+                        };
+                    }
+                }setMapping(autoMapping);                // Daten ab der nächsten Zeile
                 const allDataRows = rawData.slice(headerRowIdx + 1);
                 
                 // Erweiterte Filterung: Sammle alle relevanten Zeilen (Wohnungen + Parkplätze)
