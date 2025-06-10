@@ -194,9 +194,17 @@ function App() {
     // NEU: Speichern-Callback für RecordForm
     const handleSaveRecord = async (formData: any) => {
         if (!db || !user) return;
+        
+        // Hilfsfunktion für deutsche Zahlenformatierung
+        const parseGermanNumber = (value: string): number => {
+            if (!value) return 0;
+            const cleaned = value.replace(/\./g, "").replace(",", ".");
+            return parseFloat(cleaned) || 0;
+        };
+        
         // Datenstruktur für Firestore aufbauen
         const details = {
-            area: parseFloat(formData.formArea) || 0,
+            area: parseGermanNumber(formData.formArea),
             houseNumber: formData.formHouseNumber || '',
             location: formData.formPosition || '',
             persons: parseInt(formData.formPersons) || 0,
@@ -222,9 +230,9 @@ function App() {
             moveInDate: formData.formMoveInDate || '',
             terminationDate: formData.formTerminationDate || '',
             contractEndDate: formData.formContractEndDate || '',
-            kautionHoehe: parseFloat(formData.formKautionHoehe) || 0,
+            kautionHoehe: parseGermanNumber(formData.formKautionHoehe),
             kautionszahlungen: (formData.formKautionszahlungen || []).map((z: any) => ({
-                betrag: parseFloat(z.betrag) || 0,
+                betrag: parseGermanNumber(z.betrag),
                 datum: z.datum || '',
             })),
         };
@@ -234,21 +242,21 @@ function App() {
             mandateReference: formData.formMandateReference || '',
         };
         const rent = {
-            base: parseFloat(formData.formRentBase) || 0,
-            utilities: parseFloat(formData.formRentUtilities) || 0,
-            heating: parseFloat(formData.formRentHeating) || 0,
-            parking: parseFloat(formData.formRentParking) || 0,
-            total: (parseFloat(formData.formRentBase) || 0) + (parseFloat(formData.formRentUtilities) || 0) + (parseFloat(formData.formRentHeating) || 0) + (parseFloat(formData.formRentParking) || 0),
+            base: parseGermanNumber(formData.formRentBase),
+            utilities: parseGermanNumber(formData.formRentUtilities),
+            heating: parseGermanNumber(formData.formRentHeating),
+            parking: parseGermanNumber(formData.formRentParking),
+            total: parseGermanNumber(formData.formRentBase) + parseGermanNumber(formData.formRentUtilities) + parseGermanNumber(formData.formRentHeating) + parseGermanNumber(formData.formRentParking),
         };
         const meterReadings = {
             wasserzaehlerNrDigital: formData.formWasserzaehlerNrDigital || '',
-            wasserzaehlerStandDigital: parseFloat(formData.formWasserzaehlerStandDigital) || 0,
+            wasserzaehlerStandDigital: parseGermanNumber(formData.formWasserzaehlerStandDigital),
             wasserzaehlerNrAnalog: formData.formWasserzaehlerNrAnalog || '',
-            wasserzaehlerStandAnalog: parseFloat(formData.formWasserzaehlerStandAnalog) || 0,
+            wasserzaehlerStandAnalog: parseGermanNumber(formData.formWasserzaehlerStandAnalog),
             heizungNr: formData.formHeizungNr || '',
-            heizungStand: parseFloat(formData.formHeizungStand) || 0,
+            heizungStand: parseGermanNumber(formData.formHeizungStand),
             stromNr: formData.formStromNr || '',
-            stromStand: parseFloat(formData.formStromStand) || 0,
+            stromStand: parseGermanNumber(formData.formStromStand),
         };
         const notes = formData.formNotes || '';
         const fullRecordData = { details, tenants, contract, payment, rent, meterReadings, notes };

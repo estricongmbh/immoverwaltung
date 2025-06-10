@@ -57,8 +57,8 @@ Startseite Rosentahler
 
 5. Block Vertragsdaten
 
-- Mandatsreferenz (automatisch erstellt aus Objekt-Kürzel + WE-ID + Lage + Nachname + Vorname, Ohne Sonderzeichen oder Leerzeichen hintereinander geschrieben z. B. TRIFTWE061OGBialowonsMichelle) mit der Möglichkeit das manuell zu ändern bei Bedarf.
-- Kaution (beim neuen Anlegen sollte hier automatisch die Kaltmiete * 3 eingetragen werden mit der Möglichkeit das zu ändern)
+- Mandatsreferenz (automatisch erstellt aus Objekt-Kürzel + WE-ID + Lage + Nachname + Vorname, Ohne Sonderzeichen oder Leerzeichen hintereinander geschrieben z. B. TRIFTWE061OGBialowonsMichelle) mit der Möglichkeit das manuell zu ändern bei Bedarf. ✅ ERLEDIGT
+- Kaution (beim neuen Anlegen sollte hier automatisch die Kaltmiete * 3 eingetragen werden mit der Möglichkeit das zu ändern) ✅ ERLEDIGT
 
 - Wenn der Vertrag bereits beendet ist (siehe Vertragsende) sollte der noch nicht ausgezahlt Kautionsbetrag ebenfalls in roter Fettschrift angezeigt werden.
 

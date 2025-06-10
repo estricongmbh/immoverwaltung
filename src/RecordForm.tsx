@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 // import type { Firestore } from "firebase/firestore";
 // import { collection, addDoc, Timestamp, writeBatch, doc } from "firebase/firestore";
 import type { TenantRecord } from "../App";
@@ -11,6 +11,29 @@ interface RecordFormProps {
   recordToUpdate?: TenantRecord;
   isTenantChangeMode: boolean;
   onSave: (formData: any) => Promise<void> | void; // NEU: Callback für das Speichern
+}
+
+// Deutsche Zahlenformatierung
+function formatGermanNumber(value: string | number): string {
+  if (!value && value !== 0) return "";
+  const num = typeof value === "string" ? parseFloat(value.replace(/\./g, "").replace(",", ".")) : value;
+  if (isNaN(num)) return "";
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+function parseGermanNumber(value: string): number {
+  if (!value) return 0;
+  
+  // Entferne alle Leerzeichen
+  let cleaned = value.replace(/\s/g, "");
+  
+  // Deutsche Formatierung: Tausendertrennpunkte entfernen, Komma zu Punkt
+  cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  
+  return parseFloat(cleaned) || 0;
 }
 
 export const zaehlerZuordnung: Record<
@@ -43,23 +66,49 @@ export const zaehlerZuordnung: Record<
 };
 
 function formatWohnungsId(id: string): string {
-  if (/^([1-9]|1[0-8])$/.test(id)) return `WE${id.padStart(2, "0")}`;
+  // Numerische IDs (1-19) werden zu WE + ID formatiert
+  if (/^([1-9]|1[0-9])$/.test(id)) return `WE${id.padStart(2, "0")}`;
   return id;
 }
 
 function generateMandateReference(property: string, id: string, lage: string, nachname: string, vorname: string) {
+  // Wohnungs-ID formatieren für Mandatsreferenz
+  const formattedId = /^([1-9]|1[0-9])$/.test(id) ? `WE${id.padStart(2, "0")}` : id;
+  
+  // Lage bereinigen: nur Buchstaben und Zahlen behalten
+  const cleanedLage = (lage || "").replace(/[^a-zA-Z0-9]/g, "");
+  
   return (
     (property || "") +
-    (id || "") +
-    (lage || "") +
-    (nachname || "") +
-    (vorname || "")
-  )
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .replace(/\s+/g, "");
+    (formattedId || "") +
+    cleanedLage +
+    (nachname || "").replace(/[^a-zA-Z]/g, "") +
+    (vorname || "").replace(/[^a-zA-Z]/g, "")
+  );
 }
 
-// Hilfsfunktion: Name in Anrede, Vorname, Nachname splitten
+// Hilfsfunktion: Adresse automatisch generieren basierend auf Objekt und Vertragsstatus
+function generateAddress(property: string, apartmentId: string, houseNumber: string, isContractActive: boolean): string {
+  if (!isContractActive) return ""; // Leere Adresse wenn Vertrag beendet
+  
+  switch (property) {
+    case "TRI":
+      return `Triftstraße ${houseNumber}, 13127 Berlin`;
+    case "PAS":
+      // Wohnungs-ID 1-10: Pasewalker Str. 67
+      // Wohnungs-ID 1a-1f: Rosenthaler Str. + WohnungsID
+      if (/^([1-9]|10)$/.test(apartmentId)) {
+        return "Pasewalker Str. 67, 13127 Berlin";
+      } else if (/^1[a-f]$/.test(apartmentId)) {
+        return `Rosenthaler Str. ${apartmentId}, 13127 Berlin`;
+      }
+      return "";
+    case "RITA":
+      return "Rosenthaler Straße 1, 13127 Berlin";
+    default:
+      return "";
+  }
+}
 function parseName(name: string): { salutation: string; firstName: string; lastName: string } {
   if (!name) return { salutation: "Herr", firstName: "", lastName: "" };
   const parts = name.trim().split(/\s+/);
@@ -76,6 +125,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   isTenantChangeMode,
   onSave,
 }) => {
+  // Ref für automatische Kaution, um mehrfache Berechnungen zu verhindern
+  const autoDepositCalculationRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Zentraler State
   const [currentState, setCurrentState] = useState({
     formApartmentId: "",
@@ -132,7 +184,6 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     tenant2Email: "",
     tenant2Phone: "",
   });
-
   // Undo/Redo
   const [history, setHistory] = useState<typeof currentState[]>([]);
   const [future, setFuture] = useState<typeof currentState[]>([]);
@@ -158,7 +209,6 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     setCurrentState(future[0]);
     setFuture(future.slice(1));
   }
-
   // Automatische Mandatsreferenz
   useEffect(() => {
     if (!recordToUpdate) {
@@ -169,9 +219,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         currentState.tenant1LastName,
         currentState.tenant1FirstName
       );
-      if (!currentState.formMandateReference) {
-        setCurrentState(cs => ({ ...cs, formMandateReference: ref }));
-      }
+      setCurrentState(cs => ({ ...cs, formMandateReference: ref }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -198,41 +246,74 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentState.formApartmentId]);
-
   // Kaltmiete/m² und Kaltmiete synchronisieren
   useEffect(() => {
     if (currentState.customRentPerSqm && currentState.formArea) {
-      const newBase = (
-        parseFloat(currentState.customRentPerSqm) *
-        parseFloat(currentState.formArea)
-      ).toFixed(2);
-      setCurrentState(cs => ({ ...cs, formRentBase: newBase }));
+      const perSqm = parseGermanNumber(currentState.customRentPerSqm);
+      const area = parseFloat(currentState.formArea);
+      const newBase = (perSqm * area).toFixed(2);
+      setCurrentState(cs => ({ ...cs, formRentBase: formatGermanNumber(newBase) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentState.customRentPerSqm]);
-
-  // Kaution automatisch setzen (nur bei Neuanlage)
+  }, [currentState.customRentPerSqm]);  // Kaution automatisch setzen (nur bei Neuanlage und leerem Feld)
   useEffect(() => {
+    // Nur bei Neuanlage und wenn keine Kaution gesetzt ist
     if (!recordToUpdate && currentState.formRentBase && !currentState.formKautionHoehe) {
-      setCurrentState(cs => ({
-        ...cs,
-        formKautionHoehe: (parseFloat(cs.formRentBase) * 3).toFixed(2),
-      }));
+      // Vorherigen Timer löschen
+      if (autoDepositCalculationRef.current) {
+        clearTimeout(autoDepositCalculationRef.current);
+      }
+        // Neuen Timer setzen
+      autoDepositCalculationRef.current = setTimeout(() => {
+        const baseRent = parseGermanNumber(currentState.formRentBase);
+        
+        // Nur ausführen wenn eine realistische Kaltmiete vorhanden ist (mind. 100€)
+        if (baseRent >= 100) {
+          const deposit = baseRent * 3;
+          const formattedDeposit = formatGermanNumber(deposit);
+          
+          setCurrentState(cs => ({
+            ...cs,
+            formKautionHoehe: formattedDeposit,
+          }));
+        }
+        
+        autoDepositCalculationRef.current = null;
+      }, 800); // Längeres Debouncing - 800ms
     }
+    
+    return () => {
+      if (autoDepositCalculationRef.current) {
+        clearTimeout(autoDepositCalculationRef.current);
+        autoDepositCalculationRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentState.formRentBase]);
-
+  }, [currentState.formRentBase, recordToUpdate]);// Funktion für 3xKaltmiete Button
+  const setTripleRentAsDeposit = () => {
+    if (currentState.formRentBase) {
+      const baseRent = parseGermanNumber(currentState.formRentBase);
+      if (baseRent > 0) {
+        const deposit = baseRent * 3;
+        setCurrentState(cs => ({
+          ...cs,
+          formKautionHoehe: formatGermanNumber(deposit),
+        }));
+      }
+    }
+  };
   // Adresse automatisch vorbelegen (bei laufendem Vertrag)
   useEffect(() => {
-    if (!recordToUpdate || !currentState.formContractEndDate) {
-      setCurrentState(cs => ({
-        ...cs,
-        tenant1Address: cs.tenant1Address || `${selectedProperty} ${cs.formApartmentId} ${cs.formPosition}`,
-        tenant2Address: cs.tenant2Address || `${selectedProperty} ${cs.formApartmentId} ${cs.formPosition}`,
-      }));
-    }
+    const isContractActive = !currentState.formContractEndDate || new Date(currentState.formContractEndDate) > new Date();
+    const address = generateAddress(selectedProperty, currentState.formApartmentId, currentState.formHouseNumber, isContractActive);
+    
+    setCurrentState(cs => ({
+      ...cs,
+      tenant1Address: address,
+      tenant2Address: address,
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentState.formApartmentId, currentState.formPosition, currentState.formContractEndDate]);
+  }, [selectedProperty, currentState.formApartmentId, currentState.formHouseNumber, currentState.formContractEndDate]);
 
   // Felder aus recordToUpdate übernehmen
   useEffect(() => {
@@ -258,14 +339,13 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         formMoveInDate: data.contract?.moveInDate || "",
         formTerminationDate: data.contract?.terminationDate || "",
         formContractEndDate: data.contract?.contractEndDate || "",
-        formKautionHoehe: data.contract?.kautionHoehe?.toString() || "",
-        formKautionszahlungen: Array.isArray(data.contract?.kautionszahlungen) && data.contract.kautionszahlungen.length > 0
+        formKautionHoehe: data.contract?.kautionHoehe ? formatGermanNumber(data.contract.kautionHoehe) : "",        formKautionszahlungen: Array.isArray(data.contract?.kautionszahlungen) && data.contract.kautionszahlungen.length > 0
           ? data.contract.kautionszahlungen.map((z: any) => {
         if (typeof z === "object" && z !== null) {
-          return { betrag: z.betrag?.toString() || "", datum: z.datum || "" };
+          return { betrag: z.betrag ? formatGermanNumber(z.betrag) : "", datum: z.datum || "" };
         }
         if (typeof z === "number" || typeof z === "string") {
-          return { betrag: z.toString(), datum: "" };
+          return { betrag: formatGermanNumber(z), datum: "" };
         }
         return { betrag: "", datum: "" };
       })
@@ -273,11 +353,10 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         formKautionsauszahlungen: [{ betrag: "", datum: "" }], // Immer Default, da nicht im Datensatz
         formIban: data.payment?.iban || "",
         formDirectDebitMandateDate: data.payment?.directDebitMandateDate || "",
-        formMandateReference: data.payment?.mandateReference || "",
-        formRentBase: data.rent?.base?.toString() || "",
-        formRentUtilities: data.rent?.utilities?.toString() || "",
-        formRentHeating: data.rent?.heating?.toString() || "",
-        formRentParking: data.rent?.parking?.toString() || "",
+        formMandateReference: data.payment?.mandateReference || "",        formRentBase: data.rent?.base ? formatGermanNumber(data.rent.base) : "",
+        formRentUtilities: data.rent?.utilities ? formatGermanNumber(data.rent.utilities) : "",
+        formRentHeating: data.rent?.heating ? formatGermanNumber(data.rent.heating) : "",
+        formRentParking: data.rent?.parking ? formatGermanNumber(data.rent.parking) : "",
         formNotes: data.notes || "",
         formWasserzaehlerNrDigital: data.meterReadings?.wasserzaehlerNrDigital || "",
         formWasserzaehlerStandDigital: data.meterReadings?.wasserzaehlerStandDigital?.toString() || "",
@@ -362,10 +441,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordToUpdate, selectedProperty]);
-
   // Hilfsfunktionen für Berechnungen
   const area = parseFloat(currentState.formArea) || 0;
-  const rentBase = parseFloat(currentState.formRentBase) || 0;
+  const rentBase = parseGermanNumber(currentState.formRentBase);
   const rentPerSqm = area > 0 ? (rentBase / area).toFixed(2) : "";
   // Korrektur: Nur belegte Stellplätze zählen (leere Felder ignorieren)
   const parkingCount = [
@@ -373,19 +451,19 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     currentState.formStellplatz2,
     currentState.formStellplatz3,
     currentState.formStellplatz4,
-  ].filter(s => typeof s === 'string' ? s.trim() !== "" : String(s || "").trim() !== "").length;
-  const parkingRent = currentState.formRentParking !== ""
-    ? parseFloat(currentState.formRentParking)
+  ].filter(s => typeof s === 'string' ? s.trim() !== "" : String(s || "").trim() !== "").length;  const parkingRent = currentState.formRentParking !== ""
+    ? parseGermanNumber(currentState.formRentParking)
     : parkingCount * 40;
   const totalRent =
     rentBase +
-    (parseFloat(currentState.formRentUtilities) || 0) +
-    (parseFloat(currentState.formRentHeating) || 0) +
+    parseGermanNumber(currentState.formRentUtilities) +
+    parseGermanNumber(currentState.formRentHeating) +
     parkingRent;
   // Korrektur: Offene Kaution nur anzeigen, wenn Kautionshöhe > 0
-  const gezahlteKaution = currentState.formKautionszahlungen.reduce((sum, z) => sum + (parseFloat(z.betrag) || 0), 0);
-  const ausgezahlteKaution = currentState.formKautionsauszahlungen.reduce((sum, z) => sum + (parseFloat(z.betrag) || 0), 0);
-  const offeneKaution = (parseFloat(currentState.formKautionHoehe) > 0 ? parseFloat(currentState.formKautionHoehe) : 0) - gezahlteKaution;
+  const gezahlteKaution = currentState.formKautionszahlungen.reduce((sum, z) => sum + parseGermanNumber(z.betrag), 0);
+  const ausgezahlteKaution = currentState.formKautionsauszahlungen.reduce((sum, z) => sum + parseGermanNumber(z.betrag), 0);
+  const kautionHoehe = parseGermanNumber(currentState.formKautionHoehe);
+  const offeneKaution = kautionHoehe > 0 ? kautionHoehe - gezahlteKaution : 0;
   const nochNichtAusgezahlt = gezahlteKaution - ausgezahlteKaution;
 
   // Hilfsfunktion für Kautionszahlungen
@@ -482,12 +560,21 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         id="record-form"
         onSubmit={handleSubmit}
         className="space-y-10"
-      >
-        {/* 1. Block Stammdaten & Details */}
+      >        {/* 1. Block Stammdaten & Details */}
         {!currentState.isParkingOnly && (
           <fieldset className="p-5 border rounded-lg">
             <legend className="text-xl font-semibold px-2 mb-2">Stammdaten & Details</legend>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+              <div>
+                <label className="block mb-1">Datensatz-Datum</label>
+                <input
+                  type="date"
+                  value={currentState.formEffectiveDate}
+                  onChange={e => handleChange("formEffectiveDate", e.target.value)}
+                  className="p-2 border rounded w-full"
+                  required
+                />
+              </div>
               <div>
                 <label className="block mb-1">Wohnungs-ID</label>
                 <input
@@ -629,14 +716,17 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                 onChange={e => handleChange("tenant1Phone", e.target.value)}
                 className="p-2 border rounded w-full"
               />
-            </div>
-            <div className="md:col-span-3">
+            </div>            <div className="md:col-span-3">
               <label className="block mb-1">Adresse</label>
               <input
                 value={currentState.tenant1Address}
                 onChange={e => handleChange("tenant1Address", e.target.value)}
-                className="p-2 border rounded w-full"
-                placeholder="Adresse"
+                className={`p-2 border rounded w-full ${
+                  !currentState.tenant1Address && currentState.formContractEndDate && new Date(currentState.formContractEndDate) <= new Date()
+                    ? 'border-red-500 border-2' 
+                    : ''
+                }`}
+                placeholder="Adresse (wird automatisch befüllt bei aktivem Vertrag)"
               />
             </div>
           </div>
@@ -698,13 +788,12 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                 onChange={e => handleChange("tenant2Phone", e.target.value)}
                 className="p-2 border rounded w-full"
               />
-            </div>
-            <div className="md:col-span-3">
+            </div>            <div className="md:col-span-3">
               <label className="block mb-1">Adresse</label>
               <input
                 value={currentState.tenant2Address}
                 onChange={e => handleChange("tenant2Address", e.target.value)}
-                className="p-2 border rounded w-full"
+                className={`p-2 border rounded w-full ${!currentState.tenant2Address && currentState.formContractEndDate && new Date(currentState.formContractEndDate) <= new Date() ? 'border-red-500' : ''}`}
                 placeholder="Adresse"
               />
             </div>
@@ -715,63 +804,114 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         {!currentState.isParkingOnly && (
           <fieldset className="p-5 border rounded-lg">
             <legend className="text-xl font-semibold px-2 mb-2">Miete</legend>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
-              <div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">              <div>
                 <label className="block mb-1">Kaltmiete (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   value={currentState.formRentBase}
-                  onChange={e => handleChange("formRentBase", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    // Erlaube nur Zahlen, Komma und Punkt während der Eingabe
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("formRentBase", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    // Formatiere beim Verlassen des Feldes
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("formRentBase", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded w-full"
+                  placeholder="0,00"
                 />
-              </div>
-              <div>
+              </div>              <div>
                 <label className="block mb-1">Kaltmiete/m² (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   value={currentState.customRentPerSqm || rentPerSqm}
-                  onChange={e => handleChange("customRentPerSqm", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("customRentPerSqm", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("customRentPerSqm", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded w-full"
+                  placeholder="0,00"
                 />
-              </div>
-              <div>
+              </div><div>
                 <label className="block mb-1">Nebenkosten (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   value={currentState.formRentUtilities}
-                  onChange={e => handleChange("formRentUtilities", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("formRentUtilities", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("formRentUtilities", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded w-full"
+                  placeholder="0,00"
                 />
               </div>
               <div>
                 <label className="block mb-1">Heizkosten (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   value={currentState.formRentHeating}
-                  onChange={e => handleChange("formRentHeating", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("formRentHeating", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("formRentHeating", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded w-full"
+                  placeholder="0,00"
                 />
-              </div>
-              <div>
+              </div>              <div>
                 <label className="block mb-1">Stellplatzmiete (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={currentState.formRentParking || parkingRent}
-                  onChange={e => handleChange("formRentParking", e.target.value)}
+                  type="text"
+                  value={currentState.formRentParking || formatGermanNumber(parkingRent)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("formRentParking", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("formRentParking", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded w-full"
+                  placeholder="0,00"
                 />
-              </div>
-              <div>
+              </div>              <div>
                 <label className="block mb-1">Gesamtmiete (€)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={totalRent.toFixed(2)}
+                  type="text"
+                  value={formatGermanNumber(totalRent)}
                   readOnly
                   className="p-2 border rounded w-full bg-gray-700"
                 />
@@ -835,29 +975,59 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                 onChange={e => handleChange("formMandateReference", e.target.value)}
                 className="p-2 border rounded w-full"
               />
-            </div>
-            <div>
+            </div>            <div>
               <label className="block mb-1">Kaution (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={currentState.formKautionHoehe}
-                onChange={e => handleChange("formKautionHoehe", e.target.value)}
-                className="p-2 border rounded w-full"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={currentState.formKautionHoehe}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleChange("formKautionHoehe", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleChange("formKautionHoehe", formatGermanNumber(parsed));
+                    }
+                  }}
+                  className="p-2 border rounded w-full"
+                  placeholder="0,00"
+                />
+                <button
+                  type="button"
+                  onClick={setTripleRentAsDeposit}
+                  disabled={!currentState.formRentBase}
+                  className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 whitespace-nowrap"
+                  title="Setze Kaution auf 3x Kaltmiete"
+                >
+                  3xKaltmiete
+                </button>
+              </div>
             </div>
           </div>
           {/* Kautionszahlungen */}
           <div className="mt-4">
             <label className="block text-sm font-medium">Kautionszahlungen:</label>
             {currentState.formKautionszahlungen.map((zahlung, idx) => (
-              <div key={idx} className="flex gap-2 mb-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Betrag"
+              <div key={idx} className="flex gap-2 mb-2">                <input
+                  type="text"
+                  placeholder="0,00"
                   value={zahlung.betrag}
-                  onChange={e => handleKautionszahlungChange(idx, "betrag", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleKautionszahlungChange(idx, "betrag", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleKautionszahlungChange(idx, "betrag", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded"
                 />
                 <input
@@ -894,13 +1064,22 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           <div className="mt-4">
             <label className="block text-sm font-medium">Kautionsauszahlungen:</label>
             {currentState.formKautionsauszahlungen.map((zahlung, idx) => (
-              <div key={idx} className="flex gap-2 mb-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Betrag"
+              <div key={idx} className="flex gap-2 mb-2">                <input
+                  type="text"
+                  placeholder="0,00"
                   value={zahlung.betrag}
-                  onChange={e => handleKautionsauszahlungChange(idx, "betrag", e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[\d.,]*$/.test(value) || value === "") {
+                      handleKautionsauszahlungChange(idx, "betrag", value);
+                    }
+                  }}
+                  onBlur={e => {
+                    const parsed = parseGermanNumber(e.target.value);
+                    if (parsed > 0) {
+                      handleKautionsauszahlungChange(idx, "betrag", formatGermanNumber(parsed));
+                    }
+                  }}
                   className="p-2 border rounded"
                 />
                 <input
@@ -933,15 +1112,14 @@ export const RecordForm: React.FC<RecordFormProps> = ({
               Auszahlung hinzufügen
             </button>
           </div>
-          {/* Kautionsanzeige */}
-          {parseFloat(currentState.formKautionHoehe) > 0 && (
+          {/* Kautionsanzeige */}          {kautionHoehe > 0 && (
             <div className="mt-2">
               <span className={offeneKaution > 0 ? "text-red-600 font-bold" : ""}>
-                Offene Kaution: {offeneKaution.toFixed(2)} €
+                Offene Kaution: {formatGermanNumber(offeneKaution)} €
               </span>
               {currentState.formContractEndDate && (
                 <span className={nochNichtAusgezahlt > 0 ? "text-red-600 font-bold ml-4" : "ml-4"}>
-                  Noch nicht ausgezahlt: {nochNichtAusgezahlt.toFixed(2)} €
+                  Noch nicht ausgezahlt: {formatGermanNumber(nochNichtAusgezahlt)} €
                 </span>
               )}
             </div>
