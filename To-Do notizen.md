@@ -1,8 +1,24 @@
 
+**__Für Speicherpunkt setzen_**
 
+Schritt 1: Alle Änderungen vormerken (in die Tüte packen)
+Bash
+
+**git add** .
+Schritt 2: Den Zustand überprüfen (optional, aber gut zur Kontrolle)
+Bash
+
+**git status_**
+Jetzt sollten alle deine geänderten und gelöschten Dateien grün sein. Sie sind jetzt bereit für den Speicherpunkt.
+
+Schritt 3: Den Speicherpunkt erstellen (jetzt bezahlen)
+Bash
+
+**git commit -m "Name Backup"**
 
 Zusätzlich sollte in der Startseitenübersicht mehr Daten sichtbar sein.
-Sartseite Triftstraße
+
+Startseite Triftstraße
 Für die Triftstraße in der ersten Spalte die Hausnummer, 2. Spalte die Wohnungs-ID, 3 Spalte die Lage. danach siehe unten.
 
 Startseite Pasewalker

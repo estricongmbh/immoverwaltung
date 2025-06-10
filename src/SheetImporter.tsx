@@ -179,12 +179,83 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                         32: "meterReadings.stromNr",
                         33: "meterReadings.stromStand"
                     };
+                }                setMapping(autoMapping);                // Daten ab der nächsten Zeile
+                const allDataRows = rawData.slice(headerRowIdx + 1);
+                
+                // Erweiterte Filterung: Sammle alle relevanten Zeilen (Wohnungen + Parkplätze)
+                const dataRows: any[][] = [];
+                let foundParkingSection = false;
+                
+                for (let i = 0; i < allDataRows.length; i++) {
+                    const row = allDataRows[i];
+                    const houseNumber = (row[0] || '').toString().trim().toUpperCase();
+                      // Erkenne Parkplatz-Sektion
+                    if (houseNumber === 'P' || (row[1] || '').toString().trim().toLowerCase().includes('parkplatz')) {
+                        foundParkingSection = true;
+                        console.log(`Debug: Parkplatz-Sektion gefunden bei Zeile ${headerRowIdx + 2 + i} (${houseNumber === 'P' ? 'Hausnummer=P' : 'Lage=Parkplatz'})`);
+                    }
+                      // Füge Zeilen hinzu wenn sie Inhalt haben
+                    if (row.some(cell => String(cell).trim())) {
+                        // Überspringe Summenzeilen
+                        const locationText = (row[1] || '').toString().trim().toLowerCase();
+                        if (locationText.includes('summe') || locationText.includes('gesamt')) {
+                            console.log(`Debug: Summenzeile erkannt und übersprungen bei Zeile ${headerRowIdx + 2 + i}`);
+                            continue;
+                        }
+                          if (houseNumber === 'P' || (row[1] || '').toString().trim().toLowerCase().includes('parkplatz')) {
+                            // Immer Parkplatz-Zeilen hinzufügen
+                            console.log(`Debug: Parkplatz-Zeile hinzugefügt (${houseNumber === 'P' ? 'Hausnummer=P' : 'Lage=Parkplatz'})`);
+                            dataRows.push(row);} else if (!foundParkingSection) {
+                            // Normale Datenverarbeitung vor Parkplätzen
+                            if (selectedObject === 'TRI' && !houseNumber) {                                console.log(`Debug: Potentielles Datenende bei leerer Hausnummer, Zeile ${headerRowIdx + 2 + i}`);
+                                // Schaue voraus nach Parkplatz-Zeilen (erweiterte Suche)
+                                let hasMoreParkingData = false;
+                                console.log(`Debug: Starte Vorausschau ab Index ${i + 1}, maximal bis ${allDataRows.length - 1} (insgesamt ${allDataRows.length} Zeilen)`);
+                                for (let j = i + 1; j < allDataRows.length; j++) {
+                                    const nextRow = allDataRows[j];
+                                    const nextHouseNumber = (nextRow[0] || '').toString().trim().toUpperCase();
+                                    const nextLocation = (nextRow[1] || '').toString().trim();
+                                    const nextApartmentId = (nextRow[2] || '').toString().trim();
+                                    console.log(`Debug: Prüfe Zeile ${headerRowIdx + 2 + j}: Hausnummer="${nextHouseNumber}", Lage="${nextLocation}", ApartmentId="${nextApartmentId}"`);
+                                    
+                                    // Überspringe Summenzeilen in der Vorausschau
+                                    if (nextLocation.toLowerCase().includes('summe') || nextLocation.toLowerCase().includes('gesamt')) {
+                                        console.log(`Debug: Überspringe Summenzeile in Vorausschau`);
+                                        continue;
+                                    }
+                                      // Prüfe auf Parkplatz-Zeilen: "P" in Hausnummer ODER "Parkplatz" in Lage
+                                    if ((nextHouseNumber === 'P' || nextLocation.toLowerCase().includes('parkplatz')) && nextRow.some(cell => String(cell).trim())) {
+                                        hasMoreParkingData = true;
+                                        console.log(`Debug: ✅ Parkplatz-Zeilen gefunden ab Zeile ${headerRowIdx + 2 + j} (${nextHouseNumber === 'P' ? 'Hausnummer=P' : 'Lage=Parkplatz'}), setze Verarbeitung fort`);
+                                        break;
+                                    }
+                                }if (!hasMoreParkingData) {
+                                    console.log(`Debug: Keine weiteren Parkplatz-Zeilen gefunden, beende Verarbeitung`);
+                                    break;
+                                } else {
+                                    // Es gibt Parkplatz-Daten, also auch diese leere Zeile hinzufügen (könnte Summenzeile sein)
+                                    console.log(`Debug: Füge Zeile hinzu trotz leerer Hausnummer (Parkplatz-Daten folgen)`);
+                                    dataRows.push(row);
+                                }                            } else if ((selectedObject === 'PAS' || selectedObject === 'RITA') && 
+                                     !(row[2] || '').toString().trim()) {
+                                console.log(`Debug: Datenende bei leerer apartmentId, Zeile ${headerRowIdx + 2 + i}`);
+                                break;
+                            } else {
+                                // Normale Zeile hinzufügen
+                                dataRows.push(row);
+                            }
+                        } else {
+                            // Nach Parkplatz-Sektion: nur noch Parkplatz-Zeilen
+                            if (houseNumber) {
+                                dataRows.push(row);
+                            }
+                        }
+                    }
                 }
-                setMapping(autoMapping);
-                // Daten ab der nächsten Zeile
-                const dataRows = rawData.slice(headerRowIdx + 1).filter(row => row.some(cell => String(cell).trim()));
+                
+                console.log(`Debug: ${dataRows.length} Datenzeilen nach verbessertem Filter geladen`);
                 setData(dataRows);
-                setStatus(`${dataRows.length} Datenzeilen geladen. Bitte Spalten zuordnen.`);
+                setStatus(`${dataRows.length} Datenzeilen geladen (mit verbesserter End-of-Data-Erkennung). Bitte Spalten zuordnen.`);
                 setIsLoading(false);
             },
             error: (err: any) => { setError(`Fehler beim Verarbeiten der Sheet-Daten: ${err.message}`); console.error(err); setIsLoading(false); }
@@ -224,9 +295,7 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
       cleaned = cleaned.replace(',', '.');
       const num = parseFloat(cleaned);
       return isNaN(num) ? 0 : num;
-    }
-
-    // Hilfsfunktion: Datum ins ISO-Format bringen
+    }    // Hilfsfunktion: Datum ins ISO-Format bringen
     function parseToISODate(dateStr: string): string {
         // Wenn schon im ISO-Format, direkt zurückgeben
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
@@ -237,6 +306,66 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
             return `${y}-${m}-${d}`;
         }
         return dateStr; // Fallback: unverändert
+    }
+
+    // Hilfsfunktion: Kombinierte Parkplatz-IDs aufteilen
+    function splitParkingIds(parkingValue: string): string[] {
+        if (!parkingValue || typeof parkingValue !== 'string') return [];
+        
+        console.log(`Debug: Parkplatz-Wert verarbeiten: "${parkingValue}"`);
+        
+        // Entferne alle "P" Präfixe für die Verarbeitung
+        let cleanValue = parkingValue.toString().trim();
+        
+        // Verschiedene Separatoren unterstützen: +, ,, ;, Leerzeichen
+        const separators = /[\s,;+]+/;
+        let parts = cleanValue.split(separators);
+        
+        // Entferne "P" Präfixe und filtere leere Teile
+        parts = parts.map(part => part.replace(/^P/i, '').trim()).filter(part => part.length > 0);
+        
+        console.log(`Debug: Geteilte Parkplatz-Teile:`, parts);
+        
+        // Validiere und bereinige die Teile
+        const validParts = parts.filter(part => {
+            // Nur Zahlen oder Zahlen+Buchstaben erlauben (z.B. "14", "2a")
+            return /^[0-9]+[a-zA-Z]*$/.test(part);
+        });
+        
+        console.log(`Debug: Gültige Parkplatz-IDs:`, validParts);
+        return validParts;
+    }    // Hilfsfunktion: Prüfung auf Parkplatz-Master-Zeile
+    function isParkplatzMasterRow(row: any[]): boolean {
+        if (!row || row.length === 0) return false;
+        
+        const houseNumber = (row[0] || '').toString().trim().toUpperCase();
+        const location = (row[1] || '').toString().trim().toLowerCase();
+        const apartmentId = (row[2] || '').toString().trim();
+        
+        // Parkplatz-Zeile: Hausnummer "P" ODER Lage enthält "parkplatz"
+        if ((houseNumber === 'P' || location.includes('parkplatz')) && apartmentId) {
+            return true;
+        }
+        
+        return false;
+    }// Hilfsfunktion: Fallback-Suche in Stellplatz-Spalten
+    function findParkingInColumns(row: any[], mapping: { [key: number]: string }): string[] {
+        const parkingIds: string[] = [];
+        
+        // Finde alle Stellplatz-Spalten
+        const stellplatzColumns = Object.entries(mapping)
+            .filter(([_, field]) => field && field.startsWith('details.stellplatz'))
+            .map(([colIndex, _]) => parseInt(colIndex));
+        
+        stellplatzColumns.forEach(colIndex => {
+            const value = (row[colIndex] || '').toString().trim();
+            if (value) {
+                const ids = splitParkingIds(value);
+                parkingIds.push(...ids);
+            }
+        });
+        
+        return parkingIds;
     }
 
     const handleImport = async () => {
@@ -253,11 +382,126 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
             alert(`Fehler: Das gewählte Stichtagsdatum ('${effectiveDate}') ist ungültig. Bitte im Format JJJJ-MM-TT oder TT.MM.JJJJ eingeben.`);
             return;
         }
-        setIsLoading(true); setStatus(`Importiere ${data.length} Datensätze...`);
-        const batch = writeBatch(db);
+        setIsLoading(true); setStatus(`Importiere ${data.length} Datensätze...`);        const batch = writeBatch(db);
         const recordsPath = `propertyManagement/${appId}/users/${userId}/tenantRecords`;
         const recordsCollectionRef = collection(db, recordsPath);
-        data.forEach((row, rowIndex) => {
+          data.forEach((row, rowIndex) => {
+            console.log(`Debug: Verarbeite Zeile ${rowIndex + 4}:`, row);
+            
+            // Prüfe auf Parkplatz-Zeilen (kombiniert oder einzeln)
+            if (isParkplatzMasterRow(row)) {
+                console.log(`Debug: Parkplatz-Zeile erkannt in Zeile ${rowIndex + 4}`);
+                const apartmentIdValue = (row[2] || '').toString().trim();
+                const splitIds = splitParkingIds(apartmentIdValue);
+                
+                // Fallback für einzelne IDs ohne Separatoren
+                if (splitIds.length === 0 && apartmentIdValue) {
+                    // Einzelne ID ohne Separatoren
+                    const cleanId = apartmentIdValue.replace(/^P/i, '').trim();
+                    if (/^[0-9]+[a-zA-Z]*$/.test(cleanId)) {
+                        splitIds.push(cleanId);
+                    }
+                }
+                
+                console.log(`Debug: Verarbeite Parkplatz-IDs:`, splitIds);
+                
+                // Erstelle separate Parkplatz-Datensätze für jede ID
+                splitIds.forEach(parkingId => {
+                    console.log(`Debug: Erstelle Parkplatz-Datensatz für ID: P${parkingId}`);
+                    
+                    let recordData: any = { details: {}, tenants: {}, contract: {}, payment: {}, rent: {}, meterReadings: {}, notes: '' };
+                    let originalMappedData: { [key: string]: string } = {};
+                    
+                    // Sammle alle gemappten Daten
+                    row.forEach((cellValue, colIndex) => {
+                        const dbField = mapping[colIndex];
+                        if (dbField) {
+                            originalMappedData[dbField] = cellValue ?? '';
+                        }
+                    });
+                    
+                    // Baue Parkplatz-Datensatz auf
+                    for (const dbField in originalMappedData) {
+                        if (dbField === 'apartmentId') continue; // Überspringen, wird separat gesetzt
+                        
+                        const keys = dbField.split('.');
+                        let currentLevel = recordData;
+                        for (let i = 0; i < keys.length - 1; i++) {
+                            if (typeof currentLevel[keys[i]] !== 'object' || currentLevel[keys[i]] === null) {
+                                currentLevel[keys[i]] = {};
+                            }
+                            currentLevel = currentLevel[keys[i]];
+                        }
+                        const lastKey = keys[keys.length - 1];
+                        const value = originalMappedData[dbField];
+                        
+                        // Spezielle Behandlung für verschiedene Feldtypen
+                        if (dbField === 'tenants.tenant1.name' || dbField === 'tenants.tenant2.name') {
+                            const parts = value ? value.trim().split(/\s+/) : [];
+                            let firstName = '';
+                            let lastName = '';
+                            if (parts.length === 2) {
+                                lastName = parts[0];
+                                firstName = parts[1];
+                            } else if (parts.length > 2) {
+                                lastName = parts[0];
+                                firstName = parts.slice(1).join(' ');
+                            } else if (parts.length === 1) {
+                                firstName = parts[0];
+                                lastName = '';
+                            }
+                            const salutation = guessSalutation(firstName.split(' ')[0] || '');
+                            currentLevel['name'] = value;
+                            currentLevel['firstName'] = firstName;
+                            currentLevel['lastName'] = lastName;
+                            currentLevel['salutation'] = salutation;
+                            continue;
+                        }
+                        
+                        if (dbField.startsWith('rent.') || dbField === 'contract.kautionHoehe') {
+                            currentLevel[lastKey] = parseNumber(value);
+                            continue;
+                        }
+                        
+                        if (dbField.startsWith('contract.') && dbField.toLowerCase().includes('date')) {
+                            const dateVal = value ? new Date(value) : null;
+                            currentLevel[lastKey] = (dateVal && !isNaN(dateVal.getTime())) ? dateVal.toISOString().slice(0, 10) : '';
+                            continue;
+                        }
+                        
+                        // Standard-Zuweisung
+                        currentLevel[lastKey] = value ?? '';
+                    }
+                    
+                    // Setze die spezifische Parkplatz-ID
+                    recordData.apartmentId = `P${parkingId}`;
+                    
+                    // Parkplatz-spezifische Felder setzen
+                    recordData.details.stellplatz1 = parkingId;
+                    recordData.details.stellplatz2 = '';
+                    recordData.details.stellplatz3 = '';
+                    recordData.details.stellplatz4 = '';
+                    recordData.notes = `Aufgeteilt aus kombinierter Parkplatz-ID "${apartmentIdValue}" in Zeile ${rowIndex + 4}`;
+                    
+                    console.log(`Debug: Parkplatz-Datensatz erstellt:`, recordData);
+                    
+                    const parkingFinalRecord = {
+                        propertyCode: selectedObject + '-P',
+                        apartmentId: recordData.apartmentId,
+                        effectiveDate: Timestamp.fromDate(dateObj),
+                        createdAt: Timestamp.now(),
+                        changeType: 'Importiert (Parkplatz aufgeteilt)',
+                        data: recordData
+                    };
+                    
+                    const parkingDocRef = doc(recordsCollectionRef);
+                    batch.set(parkingDocRef, parkingFinalRecord);
+                });
+                
+                return; // Verarbeitung der Master-Zeile beendet
+            }
+            
+            // Normale Zeilen-Verarbeitung
             let recordData: any = { details: {}, tenants: {}, contract: {}, payment: {}, rent: {}, meterReadings: {}, notes: '' };
             let originalMappedData: { [key: string]: string } = {};
             row.forEach((cellValue, colIndex) => {
@@ -384,27 +628,32 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                 }
                 // Standard
                 currentLevel[lastKey] = value ?? '';
-            }
-
-            // --- apartmentId robust prüfen (vor Zählerzuordnung!) ---
+            }            // --- apartmentId robust prüfen (vor Zählerzuordnung!) ---
             const hausnr = originalMappedData['details.houseNumber'] || '';
             let aptIdTrimmed = (recordData.apartmentId || '').toString().trim();
+            
+            // Spezielle Behandlung für leere apartmentId mit Fallback-Suche
+            if (!aptIdTrimmed) {
+                console.log(`Debug: Leere apartmentId in Zeile ${rowIndex + 4}, suche in Stellplatz-Spalten...`);
+                const foundParkingIds = findParkingInColumns(row, mapping);
+                
+                if (foundParkingIds.length > 0) {
+                    console.log(`Debug: Gefundene Parkplatz-IDs in Spalten:`, foundParkingIds);
+                    aptIdTrimmed = foundParkingIds[0]; // Verwende die erste gefundene ID
+                } else {
+                    // Fehlerhafte Zeile merken, aber ohne Fehler
+                    console.log(`Debug: Überspringe Zeile ${rowIndex + 4} - keine apartmentId und keine Stellplätze gefunden`);
+                    return;
+                }
+            }
+            
             // NEU: Für Parkplätze apartmentId = 'P' + Whg
-            if (hausnr.trim().toUpperCase() === 'P') {
+            if (hausnr.trim().toUpperCase() === 'P' && !aptIdTrimmed.startsWith('P')) {
                 aptIdTrimmed = 'P' + aptIdTrimmed;
             }
-            if (!aptIdTrimmed) {
-                // Fehlerhafte Zeile merken
-                errorRows.push({
-                    rowIndex: rowIndex + 4, // Sheet-Zeile (inkl. Header)
-                    reason: 'Keine Wohnungs-ID erstellt werden konnte',
-                    row: [...row],
-                    originalMappedData: { ...originalMappedData }
-                });
-                console.warn(`Überspringe Zeile ${rowIndex + 4}, da keine Wohnungs-ID erstellt werden konnte.`);
-                return;
-            }
+            
             recordData.apartmentId = aptIdTrimmed;
+            console.log(`Debug: Finale apartmentId für Zeile ${rowIndex + 4}: "${aptIdTrimmed}"`);
 
             // --- Zählernummern: Falls leer, Zuordnungslogik ---
             const wohnungsId = recordData.apartmentId;
@@ -427,48 +676,73 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                 data: recordData
             };
             const newDocRef = doc(recordsCollectionRef);
-            batch.set(newDocRef, finalRecord);
-
-            // --- Parkplätze importieren (pro belegtem Stellplatzfeld, nur reduzierte Felder!) ---
+            batch.set(newDocRef, finalRecord);            // --- Parkplätze importieren (mit verbesserter Split-Logik!) ---
             const parkingFields = ['details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3'];
             parkingFields.forEach((field) => {
                 const parkingValue = originalMappedData[field];
                 if (parkingValue && parkingValue.toString().trim() !== '') {
-                    // Parkplatz-Datensatz erzeugen (alle Stellplatz-Felder setzen)
-                    const parkingRecord: any = {
-                        details: {
-                            stellplatz1: originalMappedData['details.stellplatz1'] || '',
-                            stellplatz2: originalMappedData['details.stellplatz2'] || '',
-                            stellplatz3: originalMappedData['details.stellplatz3'] || ''
-                        },
-                        tenants: {
-                            tenant1: {
-                                name: recordData.tenants?.tenant1?.name || '',
-                                email: recordData.tenants?.tenant1?.email || '',
-                                phone: recordData.tenants?.tenant1?.phone || ''
-                            }
-                        },
-                        contract: {
-                            contractDate: recordData.contract?.contractDate || ''
-                        },
-                        rent: {
-                            base: recordData.rent?.base || 0
-                        },
-                        notes: `Importiert aus Zeile ${rowIndex + 4}, zu Wohnung ${recordData.apartmentId}`
-                    };
-                    // apartmentId: P + Nummer (z.B. P4)
-                    parkingRecord.apartmentId = 'P' + parkingValue.toString().trim();
+                    console.log(`Debug: Verarbeite Stellplatz-Feld ${field} mit Wert: "${parkingValue}"`);
+                    
+                    // Verwende die neue Split-Funktion für kombinierte IDs
+                    const parkingIds = splitParkingIds(parkingValue.toString());
+                    
+                    parkingIds.forEach(parkingId => {
+                        console.log(`Debug: Erstelle Parkplatz-Datensatz für ID: P${parkingId} aus Feld ${field}`);
+                        
+                        // Parkplatz-Datensatz erzeugen (alle Stellplatz-Felder setzen)
+                        const parkingRecord: any = {
+                            details: {
+                                stellplatz1: originalMappedData['details.stellplatz1'] || '',
+                                stellplatz2: originalMappedData['details.stellplatz2'] || '',
+                                stellplatz3: originalMappedData['details.stellplatz3'] || '',
+                                stellplatz4: originalMappedData['details.stellplatz4'] || ''
+                            },
+                            tenants: {
+                                tenant1: {
+                                    name: recordData.tenants?.tenant1?.name || '',
+                                    firstName: recordData.tenants?.tenant1?.firstName || '',
+                                    lastName: recordData.tenants?.tenant1?.lastName || '',
+                                    salutation: recordData.tenants?.tenant1?.salutation || '',
+                                    email: recordData.tenants?.tenant1?.email || '',
+                                    phone: recordData.tenants?.tenant1?.phone || ''
+                                }
+                            },
+                            contract: {
+                                contractDate: recordData.contract?.contractDate || '',
+                                moveInDate: recordData.contract?.moveInDate || '',
+                                terminationDate: recordData.contract?.terminationDate || '',
+                                contractEndDate: recordData.contract?.contractEndDate || ''
+                            },
+                            payment: {
+                                iban: recordData.payment?.iban || '',
+                                directDebitMandateDate: recordData.payment?.directDebitMandateDate || '',
+                                mandateReference: recordData.payment?.mandateReference || ''
+                            },
+                            rent: {
+                                base: recordData.rent?.base || 0,
+                                utilities: recordData.rent?.utilities || 0,
+                                heating: recordData.rent?.heating || 0,
+                                parking: recordData.rent?.parking || 0,
+                                total: (recordData.rent?.base || 0) + (recordData.rent?.utilities || 0) + (recordData.rent?.heating || 0) + (recordData.rent?.parking || 0)
+                            },
+                            meterReadings: recordData.meterReadings || {},
+                            notes: `Importiert aus Zeile ${rowIndex + 4}, zu Wohnung ${recordData.apartmentId}${parkingIds.length > 1 ? `, aufgeteilt aus "${parkingValue}"` : ''}`
+                        };
+                        
+                        // apartmentId: P + Nummer (z.B. P4)
+                        parkingRecord.apartmentId = 'P' + parkingId;
 
-                    const parkingFinalRecord = {
-                        propertyCode: selectedObject + '-P',
-                        apartmentId: parkingRecord.apartmentId,
-                        effectiveDate: Timestamp.fromDate(dateObj), // <--- geprüfter Wert statt new Date(effectiveDate)
-                        createdAt: Timestamp.now(),
-                        changeType: 'Importiert',
-                        data: parkingRecord
-                    };
-                    const parkingDocRef = doc(recordsCollectionRef);
-                    batch.set(parkingDocRef, parkingFinalRecord);
+                        const parkingFinalRecord = {
+                            propertyCode: selectedObject + '-P',
+                            apartmentId: parkingRecord.apartmentId,
+                            effectiveDate: Timestamp.fromDate(dateObj),
+                            createdAt: Timestamp.now(),
+                            changeType: parkingIds.length > 1 ? 'Importiert (aufgeteilt)' : 'Importiert',
+                            data: parkingRecord
+                        };
+                        const parkingDocRef = doc(recordsCollectionRef);
+                        batch.set(parkingDocRef, parkingFinalRecord);
+                    });
                 }
             });
         });
@@ -480,13 +754,54 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
             setIsLoading(false);
             setStatus('Es wurden fehlerhafte Zeilen gefunden. Bitte korrigieren.');
             return; // <--- Import-Flow hier beenden!
-        }
-
-        // Nur wenn keine Fehler: commit und Alert
+        }        // Nur wenn keine Fehler: commit und Alert
         try {
             await batch.commit();
-            setStatus(`Import erfolgreich! ${data.length} Datensätze wurden geschrieben.`);
-            alert("Import abgeschlossen!");
+              // Berechne Statistiken für bessere Rückmeldung
+            let wohnungCount = 0;
+            let parkplatzCount = 0;
+            let splitParkplatzCount = 0;
+            
+            data.forEach((row) => {
+                if (isParkplatzMasterRow(row)) {
+                    const apartmentIdValue = (row[2] || '').toString().trim();
+                    const splitIds = splitParkingIds(apartmentIdValue);
+                    splitParkplatzCount += splitIds.length;
+                } else {
+                    wohnungCount++;
+                    
+                    // Zähle normale Parkplätze
+                    const parkingFields = ['details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3'];
+                    let originalMappedData: { [key: string]: string } = {};
+                    row.forEach((cellValue: any, colIndex: number) => {
+                        const dbField = mapping[colIndex];
+                        if (dbField) {
+                            originalMappedData[dbField] = cellValue ?? '';
+                        }
+                    });
+                    
+                    parkingFields.forEach((field) => {
+                        const parkingValue = originalMappedData[field];
+                        if (parkingValue && parkingValue.toString().trim() !== '') {
+                            const parkingIds = splitParkingIds(parkingValue.toString());
+                            parkplatzCount += parkingIds.length;
+                        }
+                    });
+                }
+            });
+            
+            const totalParkingSpaces = parkplatzCount + splitParkplatzCount;
+            let successMessage = `Import erfolgreich! ${wohnungCount} Wohnungen`;
+            if (totalParkingSpaces > 0) {
+                successMessage += ` und ${totalParkingSpaces} Parkplätze`;
+                if (splitParkplatzCount > 0) {
+                    successMessage += ` (${splitParkplatzCount} davon aus kombinierten IDs aufgeteilt)`;
+                }
+            }
+            successMessage += ` wurden importiert.`;
+            
+            setStatus(successMessage);
+            alert(successMessage);
             onImportComplete(effectiveDate);
         } catch (e: any) {
             setError("Fehler beim Schreiben in die Datenbank: " + e.message);
