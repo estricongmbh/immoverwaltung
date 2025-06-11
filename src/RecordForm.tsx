@@ -216,34 +216,16 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     setCurrentState(future[0]);
     setFuture(future.slice(1));
   }
-  // Handler für Bürgschaft-Checkbox
-  const handleBuergschaftChange = (checked: boolean) => {
-    console.log('handleBuergschaftChange called with:', checked);
-    console.log('Current state:', currentState.formBuergschaftLiegtVor);
-    
-    if (!checked && currentState.formBuergschaftLiegtVor) {
-      // Bürgschaft wird deaktiviert - Modal zeigen
-      console.log('Showing modal for deactivation');
-      setShowBuergschaftModal(true);
-    } else {
-      // Bürgschaft wird aktiviert oder war schon false
-      console.log('Activating or already false, updating state to:', checked);
-      handleChange('formBuergschaftLiegtVor', checked);
-      if (checked) {
-        // Beim Aktivieren das Rückgabedatum löschen
-        handleChange('formBuergschaftZurueckGesendetAm', '');
-      }
-    }
-  };
 
   // Handler für Bürgschaft-Modal-Aktionen
   const handleBuergschaftModalConfirm = () => {
-    handleChange('formBuergschaftLiegtVor', false);
-    if (tempBuergschaftReturnDate) {
-      handleChange('formBuergschaftZurueckGesendetAm', tempBuergschaftReturnDate);
-    } else {
-      handleChange('formBuergschaftZurueckGesendetAm', '');
-    }
+    setHistory([...history, currentState]);
+    setCurrentState(prev => ({
+      ...prev,
+      formBuergschaftLiegtVor: false,
+      formBuergschaftZurueckGesendetAm: tempBuergschaftReturnDate || ''
+    }));
+    setFuture([]);
     setShowBuergschaftModal(false);
     setTempBuergschaftReturnDate('');
   };
@@ -404,8 +386,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         }
         return { betrag: "", datum: "" };
       })
-          : [{ betrag: "", datum: "" }],        formKautionsauszahlungen: [{ betrag: "", datum: "" }], // Immer Default, da nicht im Datensatz
-        formBuergschaftLiegtVor: data.contract?.buergschaftLiegtVor || false,
+          : [{ betrag: "", datum: "" }],        formKautionsauszahlungen: [{ betrag: "", datum: "" }], // Immer Default, da nicht im Datensatz        formBuergschaftLiegtVor: data.contract?.buergschaftLiegtVor || false,
         formBuergschaftZurueckGesendetAm: data.contract?.buergschaftZurueckGesendetAm || "",
         formIban: data.payment?.iban || "",
         formDirectDebitMandateDate: data.payment?.directDebitMandateDate || "",
@@ -434,9 +415,15 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         tenant2LastName: t2.lastName,
         tenant2BirthDate: "",
         tenant2Address: "",        tenant2Email: data.tenants?.tenant2?.email || "",
-        tenant2Phone: data.tenants?.tenant2?.phone || "",
-        isParkingOnly: isParkingRecord, // Automatische Aktivierung für Parkplatz-Datensätze
+        tenant2Phone: data.tenants?.tenant2?.phone || "",        isParkingOnly: isParkingRecord, // Automatische Aktivierung für Parkplatz-Datensätze
       }));
+      
+      // Debug: Log der geladenen Bürgschaftsdaten
+      console.log('Loaded surety data from record:', {
+        buergschaftLiegtVor: data.contract?.buergschaftLiegtVor,
+        buergschaftZurueckGesendetAm: data.contract?.buergschaftZurueckGesendetAm,
+        recordId: recordToUpdate.id
+      });
     } else {
       // Bei Neuanlage: State auf Defaultwerte zurücksetzen (inkl. selectedProperty)
       setCurrentState({
@@ -488,11 +475,12 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         tenant1Phone: "",
         tenant2Salutation: "Herr",
         tenant2FirstName: "",
-        tenant2LastName: "",
-        tenant2BirthDate: "",
+        tenant2LastName: "",        tenant2BirthDate: "",
         tenant2Address: "",
         tenant2Email: "",
         tenant2Phone: "",
+        formBuergschaftLiegtVor: false,
+        formBuergschaftZurueckGesendetAm: "",
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -552,13 +540,12 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     updated[idx][field] = value;
     handleChange("formKautionsauszahlungen", updated);
   };
-
   // Speichern-Logik für das Formular
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCurrentState(cs => ({ ...cs, isLoading: true }));
     try {
-      await onSave(currentState); // Übergibt die Formdaten an die App
+      await onSave({ ...currentState, selectedProperty }); // selectedProperty zu FormData hinzufügen
     } finally {
       setCurrentState(cs => ({ ...cs, isLoading: false }));
       if (onCancel) onCancel();
@@ -1229,14 +1216,24 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                 </button>
               </div>
                 {/* Bürgschaft Checkbox */}
-              <div className="flex items-center space-x-4 mt-4">
-                <label className="flex items-center space-x-2 cursor-pointer">
+              <div className="flex items-center space-x-4 mt-4">                <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={currentState.formBuergschaftLiegtVor}
                     onChange={(e) => {
-                      console.log('Checkbox clicked:', e.target.checked);
-                      handleBuergschaftChange(e.target.checked);
+                      console.log('Direct onChange handler called:', e.target.checked);
+                      const checked = e.target.checked;
+                      if (!checked && currentState.formBuergschaftLiegtVor) {
+                        setShowBuergschaftModal(true);
+                      } else {
+                        setHistory([...history, currentState]);
+                        setCurrentState(prev => ({
+                          ...prev,
+                          formBuergschaftLiegtVor: checked,
+                          formBuergschaftZurueckGesendetAm: checked ? "" : prev.formBuergschaftZurueckGesendetAm
+                        }));
+                        setFuture([]);
+                      }
                     }}
                     className="w-5 h-5 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
                   />
@@ -1480,26 +1477,24 @@ export const RecordForm: React.FC<RecordFormProps> = ({
               Abbrechen
             </button>
           </div>        </div>
-      </form>
-
-      {/* Bürgschaft Modal */}
+      </form>      {/* Bürgschaft Modal */}
       {showBuergschaftModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Bürgschaft entfernen</h3>
-            <p className="text-gray-700 mb-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-600">
+            <h3 className="text-lg font-semibold text-gray-200 mb-4">Bürgschaft entfernen</h3>
+            <p className="text-gray-300 mb-4">
               Möchten Sie ein Rückgabedatum für die Bürgschaft angeben?
             </p>
             
             <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">
+              <label className="block text-gray-300 font-medium mb-2">
                 Rückgabedatum (optional)
               </label>
               <input
                 type="date"
                 value={tempBuergschaftReturnDate}
                 onChange={(e) => setTempBuergschaftReturnDate(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-200 placeholder-gray-400"
               />
             </div>
 
@@ -1507,7 +1502,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
               <button
                 type="button"
                 onClick={handleBuergschaftModalCancel}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-500"
               >
                 Abbrechen
               </button>

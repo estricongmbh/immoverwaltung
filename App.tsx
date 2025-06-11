@@ -363,6 +363,13 @@ function App() {
     const handleSaveRecord = async (formData: any) => {
         if (!db || !user) return;
         
+        // Debug: Log der Bürgschaftsdaten
+        console.log('Saving record with formData:', {
+            buergschaftLiegtVor: formData.formBuergschaftLiegtVor,
+            buergschaftZurueckGesendetAm: formData.formBuergschaftZurueckGesendetAm,
+            selectedProperty: formData.selectedProperty
+        });
+        
         // Hilfsfunktion für deutsche Zahlenformatierung
         const parseGermanNumber = (value: string): number => {
             if (!value) return 0;
@@ -406,6 +413,9 @@ function App() {
             buergschaftLiegtVor: formData.formBuergschaftLiegtVor || false,
             buergschaftZurueckGesendetAm: formData.formBuergschaftZurueckGesendetAm || '',
         };
+        
+        // Debug: Log der Contract-Daten
+        console.log('Contract object created:', contract);
         const payment = {
             iban: formData.formIban || '',
             directDebitMandateDate: formData.formDirectDebitMandateDate || '',
@@ -439,6 +449,10 @@ function App() {
             effectiveDate,
             data: fullRecordData,
         };
+        
+        // Debug: Log des finalen Records
+        console.log('Final record to save:', newRecord);
+        
         await addDoc(recordsRef, newRecord);
         await fetchRecords();
     };
