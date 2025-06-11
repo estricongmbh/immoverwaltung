@@ -16,10 +16,36 @@ Bash
 
 **git commit -m "Name Backup"**
 
-Zusätzlich sollte in der Startseitenübersicht mehr Daten sichtbar sein.
+## Startseite Triftstraße ✅ ERLEDIGT
 
-Startseite Triftstraße
-Für die Triftstraße in der ersten Spalte die Hausnummer, 2. Spalte die Wohnungs-ID, 3 Spalte die Lage. danach siehe unten.
+**NEUE TRI-SPEZIFISCHE TABELLENSTRUKTUR IMPLEMENTIERT:**
+
+Die Triftstraße hat jetzt eine komplett angepasste Startseitenansicht mit folgenden Feldern in genau der gewünschten Reihenfolge:
+
+1. **Hausnummer** - Zeigt die Hausnummer aus den Details an
+2. **Wohnungs-ID** - Formatiert als WE01, WE02, WE03 usw. für numerische IDs
+3. **Lage** - Zeigt die Lage der Wohnung (Etage, Position)
+4. **Mieter 1** - Vorname und Nachname des ersten Mieters
+5. **Mieter 2** - Vorname und Nachname des zweiten Mieters (falls vorhanden)
+6. **Fläche** - Wohnfläche in m²
+7. **Nebenkosten** - Nebenkosten in €
+8. **Heizkosten** - Heizkosten in €
+9. **Gesamtmiete** - Kaltmiete + Nebenkosten + Heizkosten (OHNE Stellplatzmiete)
+10. **Stellplätze** - Alle Stellplätze kommagetrennt angezeigt
+11. **Kaution** - Nur angezeigt wenn noch etwas offen ist
+
+**SPEZIELLE SORTIERUNG UND ANZEIGE:**
+- Datensätze mit offener Kaution werden nach unten sortiert
+- Ausgezogene Mieter mit nicht ausgezahlter Kaution werden ganz unten angezeigt
+- Offene Kautionen von beendeten Verträgen werden in **roter Fettschrift** hervorgehoben
+- Andere Objekte (PAS, RITA) behalten ihre ursprüngliche Struktur
+
+**FUNKTIONALITÄTEN:**
+- Automatische WE-Formatierung für TRI-Wohnungs-IDs
+- Intelligente Namens-Extraktion (Vor- und Nachname getrennt)
+- Berechnung der Gesamtmiete ohne Stellplatzmiete
+- Kautionstatus-Erkennung und Farbkodierung
+- Sortierung nach Hausnummer mit Kautions-Priorität
 
 Startseite Pasewalker ✅ ERLEDIGT
 In der Pasewalker Str. müssten wir die vorhandenen Daten etwas umformen. Aus dem Datenimport kommt dort für die ersten 10 Einheiten (Wohnungen im Mehrfamilienhaus) eine Wohnungs-ID 1 - 10 und eine Lage mit Etage und Lage heraus. Also Beispielsweise Wohnung 1 EG rechts. Ab der 11. Einheit wird bei der Lage jeweils eine Adresse ausgegeben Rosenthaler Str. 1 a - 1 f. Hier würde ich gerne die letzten 3 Zeichen der Zelle jeweils zur Wohnungs-ID machen. Also 1 a, 1 b, 1 c usw, Daten für die "Lage" werden für die Einfamilienhäuser 1 a - 1 f nicht benötigt, dieses Feld kann dort leer bleiben. Die erste Spalte soll also in diesem Objekt die Wohnungs-ID bzw. die Hausnummer (1 a - 1-f) sein. 

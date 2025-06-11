@@ -331,10 +331,71 @@ function App() {
         return Math.max(0, totalParkingSpaces - occupiedSpaces);
     };
 
+    // Hilfsfunktion zur Formatierung der Wohnungs-ID für Triftstraße
+    const formatApartmentId = (apartmentId: string, propertyCode: string): string => {
+        if (propertyCode === 'TRI' && /^[0-9]+$/.test(apartmentId)) {
+            // Numerische IDs für TRI werden zu WE formatiert
+            return `WE${apartmentId.padStart(2, '0')}`;
+        }
+        return apartmentId;
+    };
+
+    // Hilfsfunktion zur Berechnung der offenen Kaution
+    const calculateOpenDeposit = (record: TenantRecord): number => {
+        const kautionHoehe = record.data.contract?.kautionHoehe || 0;
+        const kautionszahlungen = record.data.contract?.kautionszahlungen || [];
+        
+        const gezahlt = kautionszahlungen.reduce((sum, zahlung) => {
+            return sum + (zahlung.betrag || 0);
+        }, 0);
+        
+        return Math.max(0, kautionHoehe - gezahlt);
+    };
+
+    // Hilfsfunktion für Vor- und Nachname-Extraktion
+    const extractName = (fullName: string): { firstName: string; lastName: string } => {
+        if (!fullName) return { firstName: '', lastName: '' };
+        const parts = fullName.trim().split(/\s+/);
+        
+        if (parts.length === 1) {
+            return { firstName: parts[0], lastName: '' };
+        } else if (parts.length === 2) {
+            return { firstName: parts[0], lastName: parts[1] };
+        } else if (parts.length > 2) {
+            return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+        }
+        
+        return { firstName: '', lastName: '' };
+    };
+
     // Sortierfunktion für Records
     const getSortedRecords = (propertyCode: string, records: TenantRecord[]) => {
         const config = sortConfig[propertyCode];
         let sorted = [...records];
+        
+        // Spezielle Sortierung für TRI: Datensätze mit offener Kaution nach unten
+        if (propertyCode === 'TRI') {
+            sorted = sorted.sort((a, b) => {
+                const openDepositA = calculateOpenDeposit(a);
+                const openDepositB = calculateOpenDeposit(b);
+                const isEndedA = a.data.contract?.contractEndDate && new Date(a.data.contract.contractEndDate) < new Date();
+                const isEndedB = b.data.contract?.contractEndDate && new Date(b.data.contract.contractEndDate) < new Date();
+                
+                // Erste Priorität: Beendete Verträge mit offener Kaution nach ganz unten
+                if (isEndedA && openDepositA > 0 && (!isEndedB || openDepositB === 0)) return 1;
+                if (isEndedB && openDepositB > 0 && (!isEndedA || openDepositA === 0)) return -1;
+                
+                // Zweite Priorität: Aktive Verträge mit offener Kaution nach unten
+                if (!isEndedA && openDepositA > 0 && !isEndedB && openDepositB === 0) return 1;
+                if (!isEndedB && openDepositB > 0 && !isEndedA && openDepositA === 0) return -1;
+                
+                // Standard-Sortierung nach Hausnummer
+                const houseA = parseInt(a.data.details?.houseNumber || '0');
+                const houseB = parseInt(b.data.details?.houseNumber || '0');
+                return houseA - houseB;
+            });
+        }
+        
         if (config) {
             sorted.sort((a, b) => {
                 // Spezialfall: apartmentId numerisch (z.B. P1-P19, WE01, 1a, ...)
@@ -451,8 +512,21 @@ function App() {
                         <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.parking')}>Stellplatzmiete</th>
                         <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.total')}>Gesamtmiete</th>
                     </>
+                ) : propertyCode === 'TRI' ? (
+                    // Triftstraße-spezifische Spalten
+                    <>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.location')}>Lage</th>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant1.name')}>Mieter 1</th>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant2.name')}>Mieter 2</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'details.area')}>Fläche</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.utilities')}>Nebenkosten</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.heating')}>Heizkosten</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.baseAndUtilities')}>Gesamtmiete</th>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.stellplatz1')}>Stellplätze</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'contract.kautionOffen')}>Kaution</th>
+                    </>
                 ) : (
-                    // Wohnungs-spezifische Spalten
+                    // Standard Wohnungs-spezifische Spalten (PAS, RITA)
                     <>
                         <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.location')}>Lage</th>
                         <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant1.name')}>Mieter 1</th>
@@ -476,7 +550,7 @@ function App() {
                     <tr key={record.id} className="hover:bg-gray-700/50">
                         {/* Gemeinsame Spalten */}
                         {PROPERTY_CODES[propertyCode as keyof typeof PROPERTY_CODES].hasHouseNumbers && <td className="td-style">{record.data.details?.houseNumber || '-'}</td>}
-                        <td className="td-style font-medium text-white">{record.apartmentId}</td>
+                        <td className="td-style font-medium text-white">{formatApartmentId(record.apartmentId, propertyCode)}</td>
                         
                         {/* Spezifische Spalten je nach Typ */}
                         {isParking ? (
@@ -486,15 +560,7 @@ function App() {
                                     (() => {
                                         const t1 = record.data.tenants?.tenant1;
                                         if (!t1) return 'N/A';
-                                        const parts = (t1.name || '').trim().split(/\s+/);
-                                        let firstName = '', lastName = '';
-                                        if (parts.length === 2) {
-                                            firstName = parts[0]; lastName = parts[1];
-                                        } else if (parts.length > 2) {
-                                            firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1];
-                                        } else if (parts.length === 1) {
-                                            firstName = parts[0]; lastName = '';
-                                        }
+                                        const { firstName, lastName } = extractName(t1.name || '');
                                         return `${firstName} ${lastName}`.trim();
                                     })()
                                 }</td>
@@ -509,23 +575,69 @@ function App() {
                                     {typeof totalRent === 'number' ? `${totalRent.toFixed(2)} €` : '-'}
                                 </td>
                             </>
+                        ) : propertyCode === 'TRI' ? (
+                            // Triftstraße-spezifische Spalten
+                            <>
+                                <td className="td-style text-gray-400">{record.data.details?.location || '-'}</td>
+                                <td className="td-style">{
+                                    (() => {
+                                        const t1 = record.data.tenants?.tenant1;
+                                        if (!t1) return '-';
+                                        const { firstName, lastName } = extractName(t1.name || '');
+                                        return `${firstName} ${lastName}`.trim() || '-';
+                                    })()
+                                }</td>
+                                <td className="td-style">{
+                                    (() => {
+                                        const t2 = record.data.tenants?.tenant2;
+                                        if (!t2) return '-';
+                                        const { firstName, lastName } = extractName(t2.name || '');
+                                        return `${firstName} ${lastName}`.trim() || '-';
+                                    })()
+                                }</td>
+                                <td className="td-style text-right">
+                                    {typeof area === 'number' ? `${area.toFixed(2)} m²` : '-'}
+                                </td>
+                                <td className="td-style text-right">
+                                    {typeof record.data.rent?.utilities === 'number' ? `${record.data.rent.utilities.toFixed(2)} €` : '-'}
+                                </td>
+                                <td className="td-style text-right">
+                                    {typeof record.data.rent?.heating === 'number' ? `${record.data.rent.heating.toFixed(2)} €` : '-'}
+                                </td>
+                                <td className="td-style text-right font-semibold">
+                                    {(() => {
+                                        const base = record.data.rent?.base || 0;
+                                        const utilities = record.data.rent?.utilities || 0;
+                                        const heating = record.data.rent?.heating || 0;
+                                        const gesamtOhneStellplatz = base + utilities + heating;
+                                        return gesamtOhneStellplatz > 0 ? `${gesamtOhneStellplatz.toFixed(2)} €` : '-';
+                                    })()
+                                }</td>
+                                <td className="td-style text-gray-400">
+                                    {[record.data.details?.stellplatz1, record.data.details?.stellplatz2, record.data.details?.stellplatz3, record.data.details?.stellplatz4].filter(Boolean).join(', ') || '-'}
+                                </td>
+                                <td className="td-style text-right">
+                                    {(() => {
+                                        const openDeposit = calculateOpenDeposit(record);
+                                        const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
+                                        
+                                        if (openDeposit > 0) {
+                                            const className = isContractEnded ? "text-red-600 font-bold" : "";
+                                            return <span className={className}>{openDeposit.toFixed(2)} €</span>;
+                                        }
+                                        return '-';
+                                    })()
+                                }</td>
+                            </>
                         ) : (
-                            // Wohnungs-Zeile
+                            // Standard Wohnungs-Zeile (PAS, RITA)
                             <>
                                 <td className="td-style text-gray-400">{record.data.details?.location || '-'}</td>
                                 <td className="td-style">{
                                     (() => {
                                         const t1 = record.data.tenants?.tenant1;
                                         if (!t1) return 'N/A';
-                                        const parts = (t1.name || '').trim().split(/\s+/);
-                                        let firstName = '', lastName = '';
-                                        if (parts.length === 2) {
-                                            firstName = parts[0]; lastName = parts[1];
-                                        } else if (parts.length > 2) {
-                                            firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1];
-                                        } else if (parts.length === 1) {
-                                            firstName = parts[0]; lastName = '';
-                                        }
+                                        const { firstName, lastName } = extractName(t1.name || '');
                                         return `${firstName} ${lastName}`.trim();
                                     })()
                                 }</td>
