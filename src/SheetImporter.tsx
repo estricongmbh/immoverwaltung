@@ -148,13 +148,30 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                         30: "meterReadings.heizungStand",              // Spalte 31: Heizung-Stand
                         31: "meterReadings.stromNr",                   // Spalte 32: Strom-Nr.
                         32: "meterReadings.stromStand"                 // Spalte 33: Strom-Stand
-                    };
-                } else if (selectedObject === 'RITA') {
-                    // RITA-spezifisches Mapping (kann später angepasst werden)
+                    };                } else if (selectedObject === 'RITA') {
+                    // RITA-spezifisches Mapping basierend auf der korrigierten Tabelle
                     autoMapping = {
                         0: "apartmentId",              // Spalte 1: Wohnungs-ID
-                        1: "details.location",         // Spalte 2: Lage
-                        // Weitere Mappings für RITA können hier hinzugefügt werden
+                        // Spalte 2: nicht importieren
+                        2: "details.location",         // Spalte 3: Lage
+                        3: "tenants.tenant1.name",     // Spalte 4: Mieter 1 Name
+                        4: "tenants.tenant2.name",     // Spalte 5: Mieter 2 Name
+                        5: "details.area",             // Spalte 6: Fläche (m²)
+                        6: "rent.base",                // Spalte 7: Kaltmiete
+                        // Spalte 8: nicht importieren
+                        8: "rent.utilities",           // Spalte 9: Nebenkosten
+                        // Spalte 10: nicht importieren
+                        // Spalte 11: nicht importieren
+                        11: "rent.heating",            // Spalte 12: Heizkosten
+                        // Spalten 13-17: nicht importieren
+                        17: "tenants.tenant1.email",  // Spalte 18: Mieter 1 Mail
+                        18: "tenants.tenant1.phone",  // Spalte 19: Mieter 1 Telefon
+                        19: "tenants.tenant2.email",  // Spalte 20: Mieter 2 Mail
+                        20: "tenants.tenant2.phone",  // Spalte 21: Mieter 2 Telefon
+                        21: "contract.contractDate",  // Spalte 22: Vertrag Datum
+                        22: "contract.moveInDate",    // Spalte 23: Vertrag Einzug
+                        23: "contract.kautionHoehe"   // Spalte 24: Kaution Höhe
+                        // Spalten 25-34: nicht importieren
                     };
                 } else if (selectedObject === 'TRI' || selectedObject === 'TRI-P') {
                     // Bestehendes TRI/TRI-P Mapping mit Datum-Logik
