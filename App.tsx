@@ -4,7 +4,7 @@ import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, collection, query, where, getDocs, Timestamp, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, Timestamp, addDoc, writeBatch, doc } from 'firebase/firestore';
 import { RecordForm } from './src/RecordForm';
 import { SheetImporter } from './src/SheetImporter';
 
@@ -102,6 +102,9 @@ function App() {
     const [recordToUpdate, setRecordToUpdate] = useState<TenantRecord | undefined>(undefined);
     const [isTenantChangeMode, setIsTenantChangeMode] = useState<boolean>(false);
     const [showImporter, setShowImporter] = useState<boolean>(false);
+    const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+    const [recordToDelete, setRecordToDelete] = useState<TenantRecord | undefined>(undefined);
+    const [deleteRelatedParkingRecords, setDeleteRelatedParkingRecords] = useState<boolean>(false);
 
     useEffect(() => {
         const app: FirebaseApp = initializeApp(firebaseConfig);
@@ -189,6 +192,86 @@ function App() {
     const handleImportSuccess = (importedDate: string) => {
         setQueryDate(importedDate);
         setShowImporter(false);
+    };
+
+    // Löschfunktionen
+    const handleShowDeleteModal = (record: TenantRecord) => {
+        setRecordToDelete(record);
+        setDeleteRelatedParkingRecords(false);
+        setShowDeleteModal(true);
+        // Wenn aus der RecordForm heraus gelöscht wird, Form schließen
+        if (showAddForm) {
+            setShowAddForm(false);
+        }
+    };
+
+    const handleCancelDelete = () => {
+        setShowDeleteModal(false);
+        setRecordToDelete(undefined);
+        setDeleteRelatedParkingRecords(false);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!db || !user || !recordToDelete) return;
+
+        try {
+            const recordsPath = `propertyManagement/${db.app.options.appId}/users/${user.uid}/tenantRecords`;
+            const recordsRef = collection(db, recordsPath);
+            
+            // Batch für atomare Löschung
+            const batch = writeBatch(db);
+            
+            // Hauptdatensatz löschen
+            const mainRecordRef = doc(recordsRef, recordToDelete.id);
+            batch.delete(mainRecordRef);
+            
+            // Prüfe auf verbundene Parkplatz-Datensätze, wenn gewünscht
+            if (deleteRelatedParkingRecords) {
+                // Finde alle Parkplatz-Datensätze mit matching Stellplätzen
+                const allRecords = Object.values(recordsByProperty).flat();
+                const parkingRecordsToDelete = allRecords.filter(record => {
+                    // Nur Parkplatz-Datensätze betrachten
+                    if (!isParkingRecord(record)) return false;
+                    
+                    // Prüfe ob einer der Stellplätze des zu löschenden Datensatzes in diesem Parkplatz-Datensatz vorkommt
+                    const stellplaetzeToCheck = [
+                        recordToDelete.data.details?.stellplatz1,
+                        recordToDelete.data.details?.stellplatz2,
+                        recordToDelete.data.details?.stellplatz3,
+                        recordToDelete.data.details?.stellplatz4
+                    ].filter(Boolean);
+                    
+                    const parkingStellplaetze = [
+                        record.data.details?.stellplatz1,
+                        record.data.details?.stellplatz2,
+                        record.data.details?.stellplatz3,
+                        record.data.details?.stellplatz4
+                    ].filter(Boolean);
+                    
+                    // Wenn einer der Stellplätze übereinstimmt, ist es ein verbundener Datensatz
+                    return stellplaetzeToCheck.some(stellplatz => parkingStellplaetze.includes(stellplatz));
+                });
+                
+                // Lösche verbundene Parkplatz-Datensätze
+                parkingRecordsToDelete.forEach(parkingRecord => {
+                    const parkingRecordRef = doc(recordsRef, parkingRecord.id);
+                    batch.delete(parkingRecordRef);
+                });
+            }
+            
+            // Führe alle Löschungen aus
+            await batch.commit();
+            
+            // Daten neu laden
+            await fetchRecords();
+            
+            // Modal schließen
+            handleCancelDelete();
+            
+        } catch (error) {
+            console.error('Fehler beim Löschen des Datensatzes:', error);
+            alert('Fehler beim Löschen des Datensatzes. Bitte versuchen Sie es erneut.');
+        }
     };
 
     // NEU: Speichern-Callback für RecordForm
@@ -466,6 +549,7 @@ function App() {
                     recordToUpdate={recordToUpdate}
                     isTenantChangeMode={isTenantChangeMode}
                     onSave={handleSaveRecord}
+                    onDelete={handleShowDeleteModal}
                 />
             ) : showImporter ? (
                 <SheetImporter db={db} userId={user.uid} appId={db.app.options.appId!} onImportComplete={handleImportSuccess} />
@@ -801,6 +885,7 @@ function App() {
                         <td className="td-style text-center space-x-2">
                             <button onClick={() => handleShowUpdateForm(record)} className="btn btn-edit">Details</button>
                             <button onClick={() => handleShowTenantChangeForm(record)} className="btn btn-primary">Mieterwechsel</button>
+                            <button onClick={() => handleShowDeleteModal(record)} className="btn btn-danger">Löschen</button>
                         </td>
                     </tr>
                 );
@@ -814,6 +899,79 @@ function App() {
                         </div>
                     )}
                 </>
+            )}
+
+            {/* Lösch-Modal */}
+            {showDeleteModal && recordToDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+                        <h2 className="text-xl font-bold text-white mb-4">Datensatz löschen</h2>
+                        
+                        <div className="mb-4">
+                            <p className="text-gray-300 mb-2">
+                                Möchten Sie den folgenden Datensatz wirklich löschen?
+                            </p>
+                            <div className="bg-gray-700 p-3 rounded border">
+                                <p className="text-white font-semibold">
+                                    {PROPERTY_CODES[recordToDelete.propertyCode]?.name} - {formatApartmentId(recordToDelete.apartmentId, recordToDelete.propertyCode)}
+                                </p>
+                                <p className="text-gray-400">
+                                    {recordToDelete.data.tenants?.tenant1?.name || 'Kein Mieter'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Checkbox für verbundene Parkplatz-Datensätze */}
+                        {(() => {
+                            const hasStellplaetze = [
+                                recordToDelete.data.details?.stellplatz1,
+                                recordToDelete.data.details?.stellplatz2,
+                                recordToDelete.data.details?.stellplatz3,
+                                recordToDelete.data.details?.stellplatz4
+                            ].some(Boolean);
+                            
+                            if (hasStellplaetze) {
+                                return (
+                                    <div className="mb-6">
+                                        <label className="flex items-center space-x-2 text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={deleteRelatedParkingRecords}
+                                                onChange={(e) => setDeleteRelatedParkingRecords(e.target.checked)}
+                                                className="rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500 focus:ring-2"
+                                            />
+                                            <span>Verbundene Parkplatz-Datensätze ebenfalls löschen</span>
+                                        </label>
+                                        <p className="text-sm text-gray-500 mt-1 ml-6">
+                                            Stellplätze: {[
+                                                recordToDelete.data.details?.stellplatz1,
+                                                recordToDelete.data.details?.stellplatz2,
+                                                recordToDelete.data.details?.stellplatz3,
+                                                recordToDelete.data.details?.stellplatz4
+                                            ].filter(Boolean).join(', ')}
+                                        </p>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
+
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={handleCancelDelete}
+                                className="btn btn-primary flex-1"
+                            >
+                                Abbrechen
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="btn btn-danger flex-1"
+                            >
+                                Löschen
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

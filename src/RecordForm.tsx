@@ -11,6 +11,7 @@ interface RecordFormProps {
   recordToUpdate?: TenantRecord;
   isTenantChangeMode: boolean;
   onSave: (formData: any) => Promise<void> | void; // NEU: Callback für das Speichern
+  onDelete?: (record: TenantRecord) => void; // NEU: Callback für das Löschen
 }
 
 // Deutsche Zahlenformatierung
@@ -124,6 +125,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   recordToUpdate,
   isTenantChangeMode,
   onSave,
+  onDelete,
 }) => {
   // Ref für automatische Kaution, um mehrfache Berechnungen zu verhindern
   const autoDepositCalculationRef = useRef<NodeJS.Timeout | null>(null);
@@ -521,8 +523,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
             : recordToUpdate
             ? "Datensatz aktualisieren"
             : "Neuen Datensatz erstellen"}
-        </h2>
-        <div className="flex gap-4">
+        </h2>        <div className="flex gap-4">
           <button
             type="button"
             className="btn btn-special"
@@ -550,7 +551,15 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           >
             Wiederholen
           </button>
-          <button
+          {recordToUpdate && onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(recordToUpdate)}
+              className="btn btn-danger"
+            >
+              Löschen
+            </button>
+          )}          <button
             type="submit"
             disabled={currentState.isLoading}
             className="btn btn-success"
@@ -561,7 +570,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="btn btn-danger"
+            className="btn btn-edit"
           >
             Abbrechen
           </button>
@@ -1368,24 +1377,34 @@ export const RecordForm: React.FC<RecordFormProps> = ({
               placeholder="Besondere Vereinbarungen..."
             />
           </fieldset>
-        )}
-
-        {/* Buttons am Formularende */}
-        <div className="flex gap-4 justify-end mt-8">
-          <button
-            type="submit"
-            disabled={currentState.isLoading}
-            className="btn btn-success"
-          >
-            {currentState.isLoading ? "Speichern..." : "Speichern"}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn btn-danger"
-          >
-            Abbrechen
-          </button>
+        )}        {/* Buttons am Formularende */}
+        <div className="flex gap-4 justify-between mt-8">
+          <div>
+            {recordToUpdate && onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(recordToUpdate)}
+                className="btn btn-danger"
+              >
+                Löschen
+              </button>
+            )}
+          </div>
+          <div className="flex gap-4">            <button
+              type="submit"
+              disabled={currentState.isLoading}
+              className="btn btn-success"
+            >
+              {currentState.isLoading ? "Speichern..." : "Speichern"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="btn btn-edit"
+            >
+              Abbrechen
+            </button>
+          </div>
         </div>
       </form>
     </div>

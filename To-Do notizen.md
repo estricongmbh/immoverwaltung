@@ -135,6 +135,37 @@ Die Rosenthaler Str. hat jetzt eine angepasste Startseitenansicht mit folgenden 
 - Keine Stellplatz-Informationen
 - Vereinfachte Struktur für Einfamilienhäuser
 
+## Löschfunktionalität ✅ ERLEDIGT
+
+## **VOLLSTÄNDIGE DATENSATZ-LÖSCHUNG IMPLEMENTIERT:**
+
+### **Lösch-Buttons:**
+- **Startseiten-Übersicht**: Neuer "Löschen"-Button neben "Details" und "Mieterwechsel"
+- **RecordForm (Datensatzbearbeitung)**: "Datensatz löschen"-Button in der unteren linken Ecke
+
+### **Intelligente Parkplatz-Behandlung:**
+- **Automatische Erkennung**: System erkennt verbundene Parkplatz-Datensätze anhand der Stellplatz-Nummern
+- **Benutzer-Auswahl**: Modal-Dialog fragt, ob verbundene Parkplätze mit gelöscht werden sollen
+- **Atomare Löschung**: Alle gewählten Datensätze werden in einer Transaktion gelöscht
+
+### **Lösch-Modal Features:**
+- **Datensatz-Vorschau**: Zeigt Objekt, Wohnungs-ID und Mieter-Name
+- **Stellplatz-Anzeige**: Liste aller zugeordneten Stellplätze
+- **Checkbox-Auswahl**: Option zum Mitlöschen verbundener Parkplatz-Datensätze
+- **Sicherheitsabfrage**: Bestätigung vor endgültiger Löschung
+
+### **Unterstützte Objekte:**
+- ✅ **TRI**: Mit Stellplatz-Verknüpfung zu TRI-P
+- ✅ **PAS**: Ohne Stellplätze (vereinfacht)
+- ✅ **RITA**: Ohne Stellplätze (vereinfacht)
+- ✅ **TRI-P**: Parkplatz-Datensätze
+
+### **Technische Details:**
+- **Firestore Batch**: Atomare Löschung mehrerer Datensätze
+- **Datenbank-Bereinigung**: Vollständige Entfernung aus Firebase
+- **Automatische Aktualisierung**: Sofortige Neuladung der Datenansicht
+- **Fehlerbehandlung**: Benutzerfreundliche Fehlermeldungen
+
 Startseite Pasewalker
 In der Pasewalker Str. müssten wir die vorhandenen Daten etwas umformen. Aus dem Datenimport kommt dort für die ersten 10 Einheiten (Wohnungen im Mehrfamilienhaus) eine Wohnungs-ID 1 - 10 und eine Lage mit Etage und Lage heraus. Also Beispielsweise Wohnung 1 EG rechts. Ab der 11. Einheit wird bei der Lage jeweils eine Adresse ausgegeben Rosenthaler Str. 1 a - 1 f. Hier würde ich gerne die letzten 3 Zeichen der Zelle jeweils zur Wohnungs-ID machen. Also 1 a, 1 b, 1 c usw, Daten für die "Lage" werden für die Einfamilienhäuser 1 a - 1 f nicht benötigt, dieses Feld kann dort leer bleiben. Die erste Spalte soll also in diesem Objekt die Wohnungs-ID bzw. die Hausnummer (1 a - 1-f) sein. 
 In der 2. Spalte die Lage (bzw. für die 1 a - 1 f ein freies Feld). danach siehe unten.
