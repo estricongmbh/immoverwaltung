@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
@@ -38,8 +38,6 @@ export interface RecordDataContract {
     contractEndDate?: string;
     kautionHoehe: number;
     kautionszahlungen: Kautionszahlung[];
-    buergschaftLiegtVor?: boolean;
-    buergschaftZurueckGesendetAm?: string;
 }
 export interface RecordDataPayment { iban: string; directDebitMandateDate?: string; mandateReference: string; }
 export interface RecordDataRent { base: number; utilities: number; heating: number; parking: number; total: number; }
@@ -93,20 +91,6 @@ const sortRecords = (records: TenantRecord[], propertyCode: string) => {
     });
 };
 
-// Hilfsfunktion zur Prüfung von Bürgschaften bei beendeten Verträgen
-const getBuergschaftDisplayText = (record: TenantRecord): string | null => {
-    const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
-    const buergschaftLiegtVor = record.data.contract?.buergschaftLiegtVor || false;
-    const buergschaftZurueckGesendet = record.data.contract?.buergschaftZurueckGesendetAm;
-    
-    // Nur bei beendeten Verträgen mit Bürgschaft anzeigen
-    if (isContractEnded && buergschaftLiegtVor && !buergschaftZurueckGesendet) {
-        return "Bürgschaft noch da";
-    }
-    
-    return null;
-};
-
 function App() {
     const [auth, setAuth] = useState<Auth | null>(null);
     const [db, setDb] = useState<Firestore | null>(null);
@@ -126,9 +110,6 @@ function App() {
     const [selectedProperties, setSelectedProperties] = useState<string[]>(['TRI', 'TRI-P', 'PAS', 'RITA']);
     const [availableDates, setAvailableDates] = useState<string[]>([]);
     const [showPropertyDropdown, setShowPropertyDropdown] = useState<boolean>(false);
-    
-    // Ref für Dropdown außerhalb-klick Erkennung
-    const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const app: FirebaseApp = initializeApp(firebaseConfig);
@@ -151,7 +132,7 @@ function App() {
         const recordsPath = `propertyManagement/${db.app.options.appId}/users/${user.uid}/tenantRecords`;
         const recordsRef = collection(db, recordsPath);
         
-        // Hole alle Datensätze um verfügbare Daten zu sammeln
+        // Hole alle Datensätze für die verfügbaren Daten
         const allRecordsQuery = query(recordsRef);
         const allRecordsSnapshot = await getDocs(allRecordsQuery);
         const uniqueDates = new Set<string>();
@@ -202,28 +183,36 @@ function App() {
         }
     }, [user, db, queryDate, selectedProperties, fetchRecords]);
 
-    // Initial loading effect for available dates
+    // Initiales Laden der verfügbaren Daten
     useEffect(() => {
-        if (user && db && availableDates.length === 0) {
-            fetchRecords();
-        }
-    }, [user, db, availableDates.length, fetchRecords]);
-
-    // Outside click handler für Dropdown
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setShowPropertyDropdown(false);
+        const loadInitialDates = async () => {
+            if (!db || !user) return;
+            
+            const recordsPath = `propertyManagement/${db.app.options.appId}/users/${user.uid}/tenantRecords`;
+            const recordsRef = collection(db, recordsPath);
+            const allRecordsQuery = query(recordsRef);
+            const allRecordsSnapshot = await getDocs(allRecordsQuery);
+            const uniqueDates = new Set<string>();
+            
+            allRecordsSnapshot.forEach(doc => {
+                const record = { id: doc.id, ...(doc.data() as Omit<TenantRecord, 'id'>) };
+                const dateStr = record.effectiveDate.toDate().toISOString().split('T')[0];
+                uniqueDates.add(dateStr);
+            });
+            
+            const sortedDates = Array.from(uniqueDates).sort((a, b) => b.localeCompare(a)); // Neueste zuerst
+            setAvailableDates(sortedDates);
+            
+            // Setze das Datum auf das neueste verfügbare, wenn es noch nicht gesetzt ist
+            if (sortedDates.length > 0 && !sortedDates.includes(queryDate)) {
+                setQueryDate(sortedDates[0]);
             }
         };
-
-        if (showPropertyDropdown) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => {
-                document.removeEventListener('mousedown', handleClickOutside);
-            };
+        
+        if (user && db) {
+            loadInitialDates();
         }
-    }, [showPropertyDropdown]);
+    }, [user, db]); // Nur beim ersten Laden
 
     const handleGoogleSignIn = async () => {
         if (!auth) return;
@@ -363,13 +352,6 @@ function App() {
     const handleSaveRecord = async (formData: any) => {
         if (!db || !user) return;
         
-        // Debug: Log der Bürgschaftsdaten
-        console.log('Saving record with formData:', {
-            buergschaftLiegtVor: formData.formBuergschaftLiegtVor,
-            buergschaftZurueckGesendetAm: formData.formBuergschaftZurueckGesendetAm,
-            selectedProperty: formData.selectedProperty
-        });
-        
         // Hilfsfunktion für deutsche Zahlenformatierung
         const parseGermanNumber = (value: string): number => {
             if (!value) return 0;
@@ -410,12 +392,7 @@ function App() {
                 betrag: parseGermanNumber(z.betrag),
                 datum: z.datum || '',
             })),
-            buergschaftLiegtVor: formData.formBuergschaftLiegtVor || false,
-            buergschaftZurueckGesendetAm: formData.formBuergschaftZurueckGesendetAm || '',
         };
-        
-        // Debug: Log der Contract-Daten
-        console.log('Contract object created:', contract);
         const payment = {
             iban: formData.formIban || '',
             directDebitMandateDate: formData.formDirectDebitMandateDate || '',
@@ -449,10 +426,6 @@ function App() {
             effectiveDate,
             data: fullRecordData,
         };
-        
-        // Debug: Log des finalen Records
-        console.log('Final record to save:', newRecord);
-        
         await addDoc(recordsRef, newRecord);
         await fetchRecords();
     };
@@ -526,11 +499,6 @@ function App() {
 
     // Hilfsfunktion zur Berechnung der offenen Kaution
     const calculateOpenDeposit = (record: TenantRecord): number => {
-        // Wenn Bürgschaft vorliegt, ist die offene Kaution automatisch 0
-        if (record.data.contract?.buergschaftLiegtVor) {
-            return 0;
-        }
-
         const kautionHoehe = record.data.contract?.kautionHoehe || 0;
         const kautionszahlungen = record.data.contract?.kautionszahlungen || [];
         
@@ -665,7 +633,7 @@ function App() {
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                             {/* Objekt-Auswahlmenü */}
                             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                                <div className="relative" ref={dropdownRef}>
+                                <div className="relative">
                                     <label className="font-semibold text-gray-300 mr-2">Objekte:</label>
                                     <button
                                         onClick={() => setShowPropertyDropdown(!showPropertyDropdown)}
@@ -713,27 +681,35 @@ function App() {
                                     )}
                                 </div>
                                 
-                                {/* Datums-Dropdown für verfügbare Daten */}
-                                <div className="relative">
+                                {/* Datums-Auswahlmenü */}
+                                <div>
                                     <label className="font-semibold text-gray-300 mr-2">Datenstand vom:</label>
-                                    <select 
-                                        value={queryDate} 
-                                        onChange={e => setQueryDate(e.target.value)} 
-                                        className="p-2 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm min-w-[150px]"
+                                    <select
+                                        value={queryDate}
+                                        onChange={e => setQueryDate(e.target.value)}
+                                        className="p-2 border border-gray-600 bg-gray-700 text-white rounded-md shadow-sm"
                                     >
-                                        {availableDates.length > 0 ? (
-                                            availableDates.map(date => (
+                                        {availableDates.map(date => {
+                                            const dateObj = new Date(date);
+                                            const formattedDate = dateObj.toLocaleDateString('de-DE', {
+                                                year: 'numeric',
+                                                month: '2-digit',
+                                                day: '2-digit'
+                                            });
+                                            return (
                                                 <option key={date} value={date}>
-                                                    {new Date(date).toLocaleDateString('de-DE', { 
-                                                        weekday: 'short', 
-                                                        year: 'numeric', 
-                                                        month: '2-digit', 
-                                                        day: '2-digit' 
-                                                    })}
+                                                    {formattedDate}
                                                 </option>
-                                            ))
-                                        ) : (
-                                            <option value={queryDate}>Keine Daten verfügbar</option>
+                                            );
+                                        })}
+                                        {!availableDates.includes(queryDate) && (
+                                            <option value={queryDate}>
+                                                {new Date(queryDate).toLocaleDateString('de-DE', {
+                                                    year: 'numeric',
+                                                    month: '2-digit',
+                                                    day: '2-digit'
+                                                })}
+                                            </option>
                                         )}
                                     </select>
                                 </div>
@@ -746,6 +722,14 @@ function App() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Click-Handler um Dropdown zu schließen */}
+                    {showPropertyDropdown && (
+                        <div 
+                            className="fixed inset-0 z-40" 
+                            onClick={() => setShowPropertyDropdown(false)}
+                        />
+                    )}
 
                     {isLoading ? <p className="text-center p-10">Lade Daten...</p> : (
                         <div className="space-y-8">
@@ -910,11 +894,6 @@ function App() {
                                     {(() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
-                                        const buergschaftText = getBuergschaftDisplayText(record);
-                                        
-                                        if (buergschaftText) {
-                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
-                                        }
                                         
                                         if (openDeposit > 0) {
                                             const className = isContractEnded ? "text-red-600 font-bold" : "";
@@ -966,11 +945,6 @@ function App() {
                                     (() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
-                                        const buergschaftText = getBuergschaftDisplayText(record);
-                                        
-                                        if (buergschaftText) {
-                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
-                                        }
                                         
                                         if (openDeposit > 0) {
                                             return (
@@ -1017,11 +991,6 @@ function App() {
                                     (() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
-                                        const buergschaftText = getBuergschaftDisplayText(record);
-                                        
-                                        if (buergschaftText) {
-                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
-                                        }
                                         
                                         if (openDeposit > 0) {
                                             return (
@@ -1087,6 +1056,7 @@ function App() {
     </table>
 </div>
                                 </div>
+                                )
                             ))}
                         </div>
                     )}
