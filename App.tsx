@@ -302,6 +302,35 @@ function App() {
         // Standard: verschachtelte Felder
         return path.split('.').reduce((acc, part) => acc && acc[part], obj?.data ?? obj);
     }
+
+    // Hilfsfunktion um zu erkennen, ob ein Datensatz ein Parkplatz ist
+    function isParkingRecord(record: TenantRecord): boolean {
+        return record.apartmentId.startsWith('P') || record.propertyCode.endsWith('-P');
+    }
+    
+    // Funktion zur Berechnung der freien Parkplätze für TRI-P
+    const calculateFreeParkingSpaces = (records: TenantRecord[]): number => {
+        const totalParkingSpaces = 19; // Gesamtanzahl der Parkplätze
+        
+        // Zähle alle belegten Stellplätze aus allen Parkplatz-Datensätzen
+        const occupiedSpaces = records.reduce((count, record) => {
+            if (isParkingRecord(record)) {
+                // Zähle alle ausgefüllten Stellplatz-Felder
+                const stellplaetze = [
+                    record.data.details?.stellplatz1,
+                    record.data.details?.stellplatz2,
+                    record.data.details?.stellplatz3,
+                    record.data.details?.stellplatz4
+                ].filter(stellplatz => stellplatz && stellplatz.toString().trim() !== '');
+                
+                return count + stellplaetze.length;
+            }
+            return count;
+        }, 0);
+        
+        return Math.max(0, totalParkingSpaces - occupiedSpaces);
+    };
+
     // Sortierfunktion für Records
     const getSortedRecords = (propertyCode: string, records: TenantRecord[]) => {
         const config = sortConfig[propertyCode];
@@ -396,19 +425,43 @@ function App() {
                                 <div key={propertyCode} className="p-4 sm:p-6 bg-gray-800 border border-gray-700 rounded-xl shadow-lg">
                                     <h2 className="block-title">
                                         {PROPERTY_CODES[propertyCode as keyof typeof PROPERTY_CODES].name}
+                                        {propertyCode === 'TRI-P' && (
+                                            <span className="text-sm text-gray-400 ml-2">
+                                                (freie Parkplätze: {calculateFreeParkingSpaces(recordsByProperty[propertyCode]).toString()})
+                                            </span>
+                                        )}
                                     </h2>
 <div className="overflow-x-auto bg-gray-800 border border-gray-700 rounded-xl shadow-lg">
     <table className="min-w-full divide-y divide-gray-700">
         <thead className="bg-gray-700">
             <tr>
+                {/* Gemeinsame Spalten für alle */}
                 {PROPERTY_CODES[propertyCode as keyof typeof PROPERTY_CODES].hasHouseNumbers && <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.houseNumber')}>Hausnr.</th>}
                 <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'apartmentId')}>Wohnung</th>
-                <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.location')}>Lage</th>
-                <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant1.name')}>Mieter 1</th>
-                <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'details.area')}>Fläche</th>
-                <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.total')}>Gesamtmiete</th>
-                <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.stellplatz1')}>Stellplätze</th>
-                <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'contract.kautionszahlungen')}>Kaution</th>
+                
+                {/* Spezifische Spalten je nach Typ */}
+                {propertyCode.endsWith('-P') ? (
+                    // Parkplatz-spezifische Spalten
+                    <>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant1.name')}>Mieter</th>
+                        <th className="th-style">Stellplatz 1</th>
+                        <th className="th-style">Stellplatz 2</th>
+                        <th className="th-style">Stellplatz 3</th>
+                        <th className="th-style">Stellplatz 4</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.parking')}>Stellplatzmiete</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.total')}>Gesamtmiete</th>
+                    </>
+                ) : (
+                    // Wohnungs-spezifische Spalten
+                    <>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.location')}>Lage</th>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'tenants.tenant1.name')}>Mieter 1</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'details.area')}>Fläche</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'rent.total')}>Gesamtmiete</th>
+                        <th className="th-style cursor-pointer" onClick={() => handleSort(propertyCode, 'details.stellplatz1')}>Stellplätze</th>
+                        <th className="th-style cursor-pointer text-right" onClick={() => handleSort(propertyCode, 'contract.kautionszahlungen')}>Kaution</th>
+                    </>
+                )}
                 <th className="th-style text-center">Aktionen</th>
             </tr>
         </thead>
@@ -416,58 +469,99 @@ function App() {
             {getSortedRecords(propertyCode, recordsByProperty[propertyCode]).map(record => {
                 const area = record.data?.details?.area;
                 const totalRent = record.data?.rent?.total;
+                const parkingRent = record.data?.rent?.parking;
+                const isParking = isParkingRecord(record);
+                
                 return (
                     <tr key={record.id} className="hover:bg-gray-700/50">
+                        {/* Gemeinsame Spalten */}
                         {PROPERTY_CODES[propertyCode as keyof typeof PROPERTY_CODES].hasHouseNumbers && <td className="td-style">{record.data.details?.houseNumber || '-'}</td>}
                         <td className="td-style font-medium text-white">{record.apartmentId}</td>
-                        <td className="td-style text-gray-400">{record.data.details?.location || '-'}</td>
-                        <td className="td-style">{
-  (() => {
-    const t1 = record.data.tenants?.tenant1;
-    if (!t1) return 'N/A';
-    const parts = (t1.name || '').trim().split(/\s+/);
-    let firstName = '', lastName = '';
-    if (parts.length === 2) {
-      firstName = parts[0]; lastName = parts[1];
-    } else if (parts.length > 2) {
-      firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1];
-    } else if (parts.length === 1) {
-      firstName = parts[0]; lastName = '';
-    }
-    return `${firstName} ${lastName}`.trim();
-  })()
-}</td>
-                        <td className="td-style text-right">
-                            {typeof area === 'number' ? `${area.toFixed(2)} m²` : '-'}
+                        
+                        {/* Spezifische Spalten je nach Typ */}
+                        {isParking ? (
+                            // Parkplatz-Zeile
+                            <>
+                                <td className="td-style">{
+                                    (() => {
+                                        const t1 = record.data.tenants?.tenant1;
+                                        if (!t1) return 'N/A';
+                                        const parts = (t1.name || '').trim().split(/\s+/);
+                                        let firstName = '', lastName = '';
+                                        if (parts.length === 2) {
+                                            firstName = parts[0]; lastName = parts[1];
+                                        } else if (parts.length > 2) {
+                                            firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1];
+                                        } else if (parts.length === 1) {
+                                            firstName = parts[0]; lastName = '';
+                                        }
+                                        return `${firstName} ${lastName}`.trim();
+                                    })()
+                                }</td>
+                                <td className="td-style text-gray-400">{record.data.details?.stellplatz1 || '-'}</td>
+                                <td className="td-style text-gray-400">{record.data.details?.stellplatz2 || '-'}</td>
+                                <td className="td-style text-gray-400">{record.data.details?.stellplatz3 || '-'}</td>
+                                <td className="td-style text-gray-400">{record.data.details?.stellplatz4 || '-'}</td>
+                                <td className="td-style text-right font-semibold text-blue-400">
+                                    {typeof parkingRent === 'number' ? `${parkingRent.toFixed(2)} €` : '-'}
+                                </td>
+                                <td className="td-style text-right font-semibold">
+                                    {typeof totalRent === 'number' ? `${totalRent.toFixed(2)} €` : '-'}
+                                </td>
+                            </>
+                        ) : (
+                            // Wohnungs-Zeile
+                            <>
+                                <td className="td-style text-gray-400">{record.data.details?.location || '-'}</td>
+                                <td className="td-style">{
+                                    (() => {
+                                        const t1 = record.data.tenants?.tenant1;
+                                        if (!t1) return 'N/A';
+                                        const parts = (t1.name || '').trim().split(/\s+/);
+                                        let firstName = '', lastName = '';
+                                        if (parts.length === 2) {
+                                            firstName = parts[0]; lastName = parts[1];
+                                        } else if (parts.length > 2) {
+                                            firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1];
+                                        } else if (parts.length === 1) {
+                                            firstName = parts[0]; lastName = '';
+                                        }
+                                        return `${firstName} ${lastName}`.trim();
+                                    })()
+                                }</td>
+                                <td className="td-style text-right">
+                                    {typeof area === 'number' ? `${area.toFixed(2)} m²` : '-'}
+                                </td>
+                                <td className="td-style text-right font-semibold">
+                                    {typeof totalRent === 'number' ? `${totalRent.toFixed(2)} €` : '-'}
+                                </td>
+                                <td className="td-style text-gray-400">
+                                    {[record.data.details?.stellplatz1, record.data.details?.stellplatz2, record.data.details?.stellplatz3].filter(Boolean).join(', ') || '-'}
+                                </td>
+                                <td className="td-style text-right">{
+                                    (() => {
+                                        const kz = record.data.contract?.kautionszahlungen;
+                                        if (Array.isArray(kz) && kz.length > 0) {
+                                            const sum = kz.reduce((s, z) => {
+                                                if (typeof z === "object" && z !== null) {
+                                                    return s + (parseFloat(String(z.betrag)) || 0);
+                                                }
+                                                if (typeof z === "number" || typeof z === "string") {
+                                                    return s + (parseFloat(z as string) || 0);
+                                                }
+                                                return s;
+                                            }, 0);
+                                            return `${sum.toFixed(2)} € (${kz.length} Rate${kz.length > 1 ? 'n' : ''})`;
+                                        }
+                                        return '-';
+                                    })()
+                                }</td>
+                            </>
+                        )}
+                        <td className="td-style text-center space-x-2">
+                            <button onClick={() => handleShowUpdateForm(record)} className="btn btn-edit">Details</button>
+                            <button onClick={() => handleShowTenantChangeForm(record)} className="btn btn-primary">Mieterwechsel</button>
                         </td>
-                        <td className="td-style text-right font-semibold">
-                            {typeof totalRent === 'number' ? `${totalRent.toFixed(2)} €` : '-'}
-                        </td>
-                        <td className="td-style text-gray-400">
-                            {[record.data.details?.stellplatz1, record.data.details?.stellplatz2, record.data.details?.stellplatz3].filter(Boolean).join(', ') || '-'}
-                        </td>
-                        <td className="td-style text-right">{
-  (() => {
-    const kz = record.data.contract?.kautionszahlungen;
-    if (Array.isArray(kz) && kz.length > 0) {
-      const sum = kz.reduce((s, z) => {
-        if (typeof z === "object" && z !== null) {
-          return s + (parseFloat(String(z.betrag)) || 0);
-        }
-        if (typeof z === "number" || typeof z === "string") {
-          return s + (parseFloat(z as string) || 0);
-        }
-        return s;
-      }, 0);
-      return `${sum.toFixed(2)} € (${kz.length} Rate${kz.length > 1 ? 'n' : ''})`;
-    }
-    return '-';
-  })()
-}</td>
-                    <td className="td-style text-center space-x-2">
-    <button onClick={() => handleShowUpdateForm(record)} className="btn btn-edit">Details</button>
-    <button onClick={() => handleShowTenantChangeForm(record)} className="btn btn-primary">Mieterwechsel</button>
-</td>
                     </tr>
                 );
             })}

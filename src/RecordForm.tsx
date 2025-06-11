@@ -306,14 +306,21 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   useEffect(() => {
     const isContractActive = !currentState.formContractEndDate || new Date(currentState.formContractEndDate) > new Date();
     const address = generateAddress(selectedProperty, currentState.formApartmentId, currentState.formHouseNumber, isContractActive);
-    
-    setCurrentState(cs => ({
+      setCurrentState(cs => ({
       ...cs,
       tenant1Address: address,
       tenant2Address: address,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty, currentState.formApartmentId, currentState.formHouseNumber, currentState.formContractEndDate]);
+
+  // Automatischer Parkplatz-Modus bei Eingabe von Parkplatz-IDs
+  useEffect(() => {
+    if (currentState.formApartmentId && currentState.formApartmentId.startsWith('P') && !currentState.isParkingOnly) {
+      console.log('Aktiviere Parkplatz-Modus automatisch für ID:', currentState.formApartmentId);
+      handleChange("isParkingOnly", true);
+    }
+  }, [currentState.formApartmentId, currentState.isParkingOnly]);
 
   // Felder aus recordToUpdate übernehmen
   useEffect(() => {
@@ -323,6 +330,10 @@ export const RecordForm: React.FC<RecordFormProps> = ({
       const t1 = parseName(data.tenants?.tenant1?.name || "");
       // Tenant 2
       const t2 = data.tenants?.tenant2 ? parseName(data.tenants.tenant2.name || "") : { salutation: "Herr", firstName: "", lastName: "" };
+      
+      // Automatische Erkennung von Parkplatz-Datensätzen
+      const isParkingRecord = recordToUpdate.apartmentId?.startsWith('P') || recordToUpdate.propertyCode?.endsWith('-P');
+      
       setCurrentState((cs) => ({
         ...cs,
         formApartmentId: recordToUpdate.apartmentId || "",
@@ -377,9 +388,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         tenant2FirstName: t2.firstName,
         tenant2LastName: t2.lastName,
         tenant2BirthDate: "",
-        tenant2Address: "",
-        tenant2Email: data.tenants?.tenant2?.email || "",
+        tenant2Address: "",        tenant2Email: data.tenants?.tenant2?.email || "",
         tenant2Phone: data.tenants?.tenant2?.phone || "",
+        isParkingOnly: isParkingRecord, // Automatische Aktivierung für Parkplatz-Datensätze
       }));
     } else {
       // Bei Neuanlage: State auf Defaultwerte zurücksetzen (inkl. selectedProperty)
@@ -555,12 +566,163 @@ export const RecordForm: React.FC<RecordFormProps> = ({
             Abbrechen
           </button>
         </div>
-      </div>
-      <form
+      </div>      <form
         id="record-form"
         onSubmit={handleSubmit}
         className="space-y-10"
-      >        {/* 1. Block Stammdaten & Details */}
+      >
+        {/* Parkplatz-Modus: Spezielle Felder nur für Parkplätze */}
+        {currentState.isParkingOnly && (
+          <>
+            <fieldset className="p-5 border rounded-lg">
+              <legend className="text-xl font-semibold px-2 mb-2">Parkplatz-Stammdaten</legend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                <div>
+                  <label className="block mb-1">Datensatz-Datum</label>
+                  <input
+                    type="date"
+                    value={currentState.formEffectiveDate}
+                    onChange={e => handleChange("formEffectiveDate", e.target.value)}
+                    className="p-2 border rounded w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Parkplatz-ID</label>
+                  <input
+                    value={currentState.formApartmentId}
+                    onChange={e => handleChange("formApartmentId", e.target.value)}
+                    className="p-2 border rounded w-full"
+                    required
+                    placeholder="z.B. P1, P14"
+                  />
+                </div>
+                {selectedProperty === "TRI" && (
+                  <div>
+                    <label className="block mb-1">Hausnummer</label>
+                    <input
+                      value={currentState.formHouseNumber}
+                      onChange={e => handleChange("formHouseNumber", e.target.value)}
+                      className="p-2 border rounded w-full"
+                      placeholder="z.B. P oder 131"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                  <label className="block mb-1">Stellplatz 1</label>
+                  <input
+                    value={currentState.formStellplatz1}
+                    onChange={e => handleChange("formStellplatz1", e.target.value)}
+                    className="p-2 border rounded w-full"
+                    placeholder="z.B. 14"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Stellplatz 2</label>
+                  <input
+                    value={currentState.formStellplatz2}
+                    onChange={e => handleChange("formStellplatz2", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Stellplatz 3</label>
+                  <input
+                    value={currentState.formStellplatz3}
+                    onChange={e => handleChange("formStellplatz3", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Stellplatz 4</label>
+                  <input
+                    value={currentState.formStellplatz4}
+                    onChange={e => handleChange("formStellplatz4", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+              </div>            </fieldset><fieldset className="p-5 border rounded-lg">
+              <legend className="text-xl font-semibold px-2 mb-2">Stellplatzmiete</legend>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <div>
+                  <label className="block mb-1">Stellplatzmiete (€)</label>
+                  <input
+                    type="text"
+                    value={currentState.formRentParking}
+                    onChange={e => {
+                      const value = e.target.value;
+                      if (/^[\d.,]*$/.test(value) || value === "") {
+                        handleChange("formRentParking", value);
+                      }
+                    }}
+                    onBlur={e => {
+                      const parsed = parseGermanNumber(e.target.value);
+                      if (parsed > 0) {
+                        handleChange("formRentParking", formatGermanNumber(parsed));
+                      }
+                    }}
+                    className="p-2 border rounded w-full"
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset className="p-5 border rounded-lg">
+              <legend className="text-xl font-semibold px-2 mb-2">Vertragsdaten</legend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                <div>
+                  <label className="block mb-1">Vertragsdatum</label>
+                  <input
+                    type="date"
+                    value={currentState.formContractDate}
+                    onChange={e => handleChange("formContractDate", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Einzugsdatum</label>
+                  <input
+                    type="date"
+                    value={currentState.formMoveInDate}
+                    onChange={e => handleChange("formMoveInDate", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Vertragsende</label>
+                  <input
+                    type="date"
+                    value={currentState.formContractEndDate}
+                    onChange={e => handleChange("formContractEndDate", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">IBAN</label>
+                  <input
+                    value={currentState.formIban}
+                    onChange={e => handleChange("formIban", e.target.value)}
+                    className="p-2 border rounded w-full"
+                    placeholder="DE..."
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Mandatsreferenz</label>
+                  <input
+                    value={currentState.formMandateReference}
+                    onChange={e => handleChange("formMandateReference", e.target.value)}
+                    className="p-2 border rounded w-full"
+                  />
+                </div>
+              </div>
+            </fieldset>
+          </>
+        )}
+
+        {/* 1. Block Stammdaten & Details */}
         {!currentState.isParkingOnly && (
           <fieldset className="p-5 border rounded-lg">
             <legend className="text-xl font-semibold px-2 mb-2">Stammdaten & Details</legend>
@@ -918,11 +1080,10 @@ export const RecordForm: React.FC<RecordFormProps> = ({
               </div>
             </div>
           </fieldset>
-        )}
-
-        {/* 5. Block Vertragsdaten */}
-        <fieldset className="p-5 border rounded-lg">
-          <legend className="text-xl font-semibold px-2 mb-2">Vertragsdaten</legend>
+        )}        {/* 5. Block Vertragsdaten */}
+        {!currentState.isParkingOnly && (
+          <fieldset className="p-5 border rounded-lg">
+            <legend className="text-xl font-semibold px-2 mb-2">Vertragsdaten</legend>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
             <div>
               <label className="block mb-1">Mietvertrag vom</label>
@@ -1122,9 +1283,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                   Noch nicht ausgezahlt: {formatGermanNumber(nochNichtAusgezahlt)} €
                 </span>
               )}
-            </div>
-          )}
+            </div>          )}
         </fieldset>
+        )}
 
         {/* 6. Block Abrechnungsdaten (Zähler) */}
         {!currentState.isParkingOnly && (

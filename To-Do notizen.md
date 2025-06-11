@@ -57,10 +57,10 @@ Startseite Rosentahler
 
 5. Block Vertragsdaten
 
-- Mandatsreferenz (automatisch erstellt aus Objekt-Kürzel + WE-ID + Lage + Nachname + Vorname, Ohne Sonderzeichen oder Leerzeichen hintereinander geschrieben z. B. TRIFTWE061OGBialowonsMichelle) mit der Möglichkeit das manuell zu ändern bei Bedarf. ✅ ERLEDIGT
-- Kaution (beim neuen Anlegen sollte hier automatisch die Kaltmiete * 3 eingetragen werden mit der Möglichkeit das zu ändern) ✅ ERLEDIGT
+## - Mandatsreferenz (automatisch erstellt aus Objekt-Kürzel + WE-ID + Lage + Nachname + Vorname, Ohne Sonderzeichen oder Leerzeichen hintereinander geschrieben z. B. TRIFTWE061OGBialowonsMichelle) mit der Möglichkeit das manuell zu ändern bei Bedarf. ✅ ERLEDIGT
+## - Kaution (beim neuen Anlegen sollte hier automatisch die Kaltmiete * 3 eingetragen werden mit der Möglichkeit das zu ändern) ✅ ERLEDIGT
 
-- Wenn der Vertrag bereits beendet ist (siehe Vertragsende) sollte der noch nicht ausgezahlt Kautionsbetrag ebenfalls in roter Fettschrift angezeigt werden.✅ ERLEDIGT
+## - Wenn der Vertrag bereits beendet ist (siehe Vertragsende) sollte der noch nicht ausgezahlt Kautionsbetrag ebenfalls in roter Fettschrift angezeigt werden.✅ ERLEDIGT
 
 Block 6 Abrechnungsdaten
 
@@ -69,7 +69,7 @@ Block 6 Abrechnungsdaten
 
 
 
- Es gibt insgesamt 19 Parkplätz. In der Startseitenübersicht sollte oben ein Feld bei der Triftstraße eingefügt werden das die freien Parkplätze anzeigt. Also ein Feld das berechnet wird aus 19 – Anzahl vermieteter Parkplätze.
+ ## Es gibt insgesamt 19 Parkplätz. In der Startseitenübersicht sollte oben ein Feld bei der Triftstraße eingefügt werden das die freien Parkplätze anzeigt. Also ein Feld das berechnet wird aus 19 – Anzahl vermieteter Parkplätze.✅ ERLEDIGT
 
 
 

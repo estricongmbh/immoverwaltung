@@ -451,23 +451,46 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                 console.log(`Debug: Verarbeite Parkplatz-IDs:`, splitIds);
                 
                 // Erstelle separate Parkplatz-Datensätze für jede ID
-                splitIds.forEach(parkingId => {
-                    console.log(`Debug: Erstelle Parkplatz-Datensatz für ID: P${parkingId}`);
-                    
-                    let recordData: any = { details: {}, tenants: {}, contract: {}, payment: {}, rent: {}, meterReadings: {}, notes: '' };
+                splitIds.forEach(parkingId => {                    console.log(`Debug: Erstelle Parkplatz-Datensatz für ID: P${parkingId}`);
+                      // Initialisiere nur die für Parkplätze benötigten Datenstrukturen
+                    let recordData: any = { 
+                        details: { stellplatz1: '', stellplatz2: '', stellplatz3: '', stellplatz4: '' }, 
+                        tenants: { tenant1: { 
+                            name: '', phone: '', email: '', firstName: '', lastName: '', 
+                            salutation: '', address: '', birthDate: '' 
+                        } }, 
+                        contract: { contractDate: '', moveInDate: '', contractEndDate: '' }, 
+                        payment: { iban: '', mandateReference: '' }, 
+                        rent: { parking: 0, base: 0, total: 0 }, 
+                        notes: '' 
+                    };
                     let originalMappedData: { [key: string]: string } = {};
-                    
-                    // Sammle alle gemappten Daten
+                      // Sammle alle gemappten Daten
                     row.forEach((cellValue, colIndex) => {
                         const dbField = mapping[colIndex];
                         if (dbField) {
                             originalMappedData[dbField] = cellValue ?? '';
                         }
                     });
+                      // Definiere erlaubte Felder für Parkplätze
+                    const allowedParkingFields = [
+                        'details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3', 'details.stellplatz4',
+                        'tenants.tenant1.name', 'tenants.tenant1.phone', 'tenants.tenant1.email', 
+                        'tenants.tenant1.address', 'tenants.tenant1.birthDate', 'tenants.tenant1.salutation',
+                        'contract.contractDate', 'contract.moveInDate', 'contract.contractEndDate',
+                        'rent.parking', 'rent.base', // Stellplatzmiete
+                        'payment.iban', 'payment.mandateReference'
+                    ];
                     
-                    // Baue Parkplatz-Datensatz auf
+                    // Baue Parkplatz-Datensatz auf (nur mit erlaubten Feldern)
                     for (const dbField in originalMappedData) {
                         if (dbField === 'apartmentId') continue; // Überspringen, wird separat gesetzt
+                        
+                        // Prüfe ob Feld für Parkplätze erlaubt ist
+                        if (!allowedParkingFields.includes(dbField)) {
+                            console.log(`Debug: Überspringe Feld für Parkplatz: ${dbField}`);
+                            continue;
+                        }
                         
                         const keys = dbField.split('.');
                         let currentLevel = recordData;
@@ -479,9 +502,8 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                         }
                         const lastKey = keys[keys.length - 1];
                         const value = originalMappedData[dbField];
-                        
-                        // Spezielle Behandlung für verschiedene Feldtypen
-                        if (dbField === 'tenants.tenant1.name' || dbField === 'tenants.tenant2.name') {
+                          // Spezielle Behandlung für verschiedene Feldtypen
+                        if (dbField === 'tenants.tenant1.name') {
                             const parts = value ? value.trim().split(/\s+/) : [];
                             let firstName = '';
                             let lastName = '';
@@ -708,6 +730,19 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
               if (!recordData.meterReadings.wasserzaehlerNrAnalog) recordData.meterReadings.wasserzaehlerNrAnalog = zuordnung.wasserzaehlerNrAnalog || '';
               if (!recordData.meterReadings.heizungNr) recordData.meterReadings.heizungNr = zuordnung.heizungNr || '';
               if (!recordData.meterReadings.stromNr) recordData.meterReadings.stromNr = zuordnung.stromNr || '';
+            }            // --- Prüfe ob Parkplätze extrahiert werden und entferne dann die Stellplatzmiete ---
+            const parkingFields = ['details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3'];
+            const hasParkingSpaces = parkingFields.some(field => {
+                const parkingValue = originalMappedData[field];
+                return parkingValue && parkingValue.toString().trim() !== '';
+            });
+            
+            // Wenn Parkplätze als separate Datensätze extrahiert werden, entferne die Stellplatzmiete von der Wohnung
+            if (hasParkingSpaces) {
+                console.log(`Debug: Entferne Stellplatzmiete von Wohnung ${recordData.apartmentId} da Parkplätze separat extrahiert werden`);
+                recordData.rent.parking = 0;
+                // Gesamtmiete neu berechnen ohne Stellplatzmiete
+                recordData.rent.total = (recordData.rent.base || 0) + (recordData.rent.utilities || 0) + (recordData.rent.heating || 0);
             }
 
             // --- Wohnung importieren ---
@@ -720,9 +755,8 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                 changeType: 'Importiert',
                 data: recordData
             };
-            const newDocRef = doc(recordsCollectionRef);
-            batch.set(newDocRef, finalRecord);            // --- Parkplätze importieren (mit verbesserter Split-Logik!) ---
-            const parkingFields = ['details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3'];
+            const newDocRef = doc(recordsCollectionRef);            batch.set(newDocRef, finalRecord);            // --- Parkplätze importieren (mit verbesserter Split-Logik!) ---
+            // Verwende die bereits definierte parkingFields Variable
             parkingFields.forEach((field) => {
                 const parkingValue = originalMappedData[field];
                 if (parkingValue && parkingValue.toString().trim() !== '') {
@@ -730,17 +764,16 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                     
                     // Verwende die neue Split-Funktion für kombinierte IDs
                     const parkingIds = splitParkingIds(parkingValue.toString());
-                    
-                    parkingIds.forEach(parkingId => {
+                      parkingIds.forEach(parkingId => {
                         console.log(`Debug: Erstelle Parkplatz-Datensatz für ID: P${parkingId} aus Feld ${field}`);
                         
-                        // Parkplatz-Datensatz erzeugen (alle Stellplatz-Felder setzen)
+                        // Parkplatz-Datensatz erzeugen (nur relevante Felder für Parkplätze)
                         const parkingRecord: any = {
                             details: {
-                                stellplatz1: originalMappedData['details.stellplatz1'] || '',
-                                stellplatz2: originalMappedData['details.stellplatz2'] || '',
-                                stellplatz3: originalMappedData['details.stellplatz3'] || '',
-                                stellplatz4: originalMappedData['details.stellplatz4'] || ''
+                                stellplatz1: parkingId,  // Setze spezifische Parkplatz-ID
+                                stellplatz2: '',
+                                stellplatz3: '',
+                                stellplatz4: ''
                             },
                             tenants: {
                                 tenant1: {
@@ -749,28 +782,25 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
                                     lastName: recordData.tenants?.tenant1?.lastName || '',
                                     salutation: recordData.tenants?.tenant1?.salutation || '',
                                     email: recordData.tenants?.tenant1?.email || '',
-                                    phone: recordData.tenants?.tenant1?.phone || ''
+                                    phone: recordData.tenants?.tenant1?.phone || '',
+                                    address: recordData.tenants?.tenant1?.address || '',
+                                    birthDate: recordData.tenants?.tenant1?.birthDate || ''
                                 }
                             },
                             contract: {
                                 contractDate: recordData.contract?.contractDate || '',
                                 moveInDate: recordData.contract?.moveInDate || '',
-                                terminationDate: recordData.contract?.terminationDate || '',
                                 contractEndDate: recordData.contract?.contractEndDate || ''
                             },
                             payment: {
                                 iban: recordData.payment?.iban || '',
-                                directDebitMandateDate: recordData.payment?.directDebitMandateDate || '',
                                 mandateReference: recordData.payment?.mandateReference || ''
                             },
                             rent: {
-                                base: recordData.rent?.base || 0,
-                                utilities: recordData.rent?.utilities || 0,
-                                heating: recordData.rent?.heating || 0,
                                 parking: recordData.rent?.parking || 0,
-                                total: (recordData.rent?.base || 0) + (recordData.rent?.utilities || 0) + (recordData.rent?.heating || 0) + (recordData.rent?.parking || 0)
+                                base: recordData.rent?.base || 0,
+                                total: (recordData.rent?.parking || 0) + (recordData.rent?.base || 0)
                             },
-                            meterReadings: recordData.meterReadings || {},
                             notes: `Importiert aus Zeile ${rowIndex + 4}, zu Wohnung ${recordData.apartmentId}${parkingIds.length > 1 ? `, aufgeteilt aus "${parkingValue}"` : ''}`
                         };
                         
