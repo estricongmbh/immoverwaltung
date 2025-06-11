@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import { writeBatch, doc, collection, Timestamp } from 'firebase/firestore';
 import Papa from 'papaparse';
-import { zaehlerZuordnung } from "./RecordForm"; // Importiere zaehlerZuordnung
 
 interface SheetImporterProps {
     db: Firestore;
@@ -737,17 +736,11 @@ export const SheetImporter: React.FC<SheetImporterProps> = ({ db, userId, appId,
             }
             
             recordData.apartmentId = aptIdTrimmed;
-            console.log(`Debug: Finale apartmentId für Zeile ${rowIndex + 4}: "${aptIdTrimmed}"`);
-
-            // --- Zählernummern: Falls leer, Zuordnungslogik ---
+            console.log(`Debug: Finale apartmentId für Zeile ${rowIndex + 4}: "${aptIdTrimmed}"`);            // --- Zählernummern: Falls leer, könnten hier Standardwerte gesetzt werden ---
             const wohnungsId = recordData.apartmentId;
-            const zuordnung = zaehlerZuordnung[wohnungsId];
-            if (zuordnung) {
-              if (!recordData.meterReadings.wasserzaehlerNrDigital) recordData.meterReadings.wasserzaehlerNrDigital = zuordnung.wasserzaehlerNrDigital || '';
-              if (!recordData.meterReadings.wasserzaehlerNrAnalog) recordData.meterReadings.wasserzaehlerNrAnalog = zuordnung.wasserzaehlerNrAnalog || '';
-              if (!recordData.meterReadings.heizungNr) recordData.meterReadings.heizungNr = zuordnung.heizungNr || '';
-              if (!recordData.meterReadings.stromNr) recordData.meterReadings.stromNr = zuordnung.stromNr || '';
-            }            // --- Prüfe ob Parkplätze extrahiert werden und entferne dann die Stellplatzmiete ---
+            // TODO: Zählerzuordnung implementieren falls benötigt
+
+            // --- Prüfe ob Parkplätze extrahiert werden und entferne dann die Stellplatzmiete ---
             const parkingFields = ['details.stellplatz1', 'details.stellplatz2', 'details.stellplatz3'];
             const hasParkingSpaces = parkingFields.some(field => {
                 const parkingValue = originalMappedData[field];

@@ -38,6 +38,8 @@ export interface RecordDataContract {
     contractEndDate?: string;
     kautionHoehe: number;
     kautionszahlungen: Kautionszahlung[];
+    buergschaftLiegtVor?: boolean;
+    buergschaftZurueckGesendetAm?: string;
 }
 export interface RecordDataPayment { iban: string; directDebitMandateDate?: string; mandateReference: string; }
 export interface RecordDataRent { base: number; utilities: number; heating: number; parking: number; total: number; }
@@ -89,6 +91,20 @@ const sortRecords = (records: TenantRecord[], propertyCode: string) => {
         const locationB = (b.data.details.location || '').replace('EG', '0').replace('OG', '');
         return locationA.localeCompare(locationB);
     });
+};
+
+// Hilfsfunktion zur Prüfung von Bürgschaften bei beendeten Verträgen
+const getBuergschaftDisplayText = (record: TenantRecord): string | null => {
+    const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
+    const buergschaftLiegtVor = record.data.contract?.buergschaftLiegtVor || false;
+    const buergschaftZurueckGesendet = record.data.contract?.buergschaftZurueckGesendetAm;
+    
+    // Nur bei beendeten Verträgen mit Bürgschaft anzeigen
+    if (isContractEnded && buergschaftLiegtVor && !buergschaftZurueckGesendet) {
+        return "Bürgschaft noch da";
+    }
+    
+    return null;
 };
 
 function App() {
@@ -387,6 +403,8 @@ function App() {
                 betrag: parseGermanNumber(z.betrag),
                 datum: z.datum || '',
             })),
+            buergschaftLiegtVor: formData.formBuergschaftLiegtVor || false,
+            buergschaftZurueckGesendetAm: formData.formBuergschaftZurueckGesendetAm || '',
         };
         const payment = {
             iban: formData.formIban || '',
@@ -494,6 +512,11 @@ function App() {
 
     // Hilfsfunktion zur Berechnung der offenen Kaution
     const calculateOpenDeposit = (record: TenantRecord): number => {
+        // Wenn Bürgschaft vorliegt, ist die offene Kaution automatisch 0
+        if (record.data.contract?.buergschaftLiegtVor) {
+            return 0;
+        }
+
         const kautionHoehe = record.data.contract?.kautionHoehe || 0;
         const kautionszahlungen = record.data.contract?.kautionszahlungen || [];
         
@@ -873,6 +896,11 @@ function App() {
                                     {(() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
+                                        const buergschaftText = getBuergschaftDisplayText(record);
+                                        
+                                        if (buergschaftText) {
+                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
+                                        }
                                         
                                         if (openDeposit > 0) {
                                             const className = isContractEnded ? "text-red-600 font-bold" : "";
@@ -924,6 +952,11 @@ function App() {
                                     (() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
+                                        const buergschaftText = getBuergschaftDisplayText(record);
+                                        
+                                        if (buergschaftText) {
+                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
+                                        }
                                         
                                         if (openDeposit > 0) {
                                             return (
@@ -970,6 +1003,11 @@ function App() {
                                     (() => {
                                         const openDeposit = calculateOpenDeposit(record);
                                         const isContractEnded = record.data.contract?.contractEndDate && new Date(record.data.contract.contractEndDate) < new Date();
+                                        const buergschaftText = getBuergschaftDisplayText(record);
+                                        
+                                        if (buergschaftText) {
+                                            return <span className="text-red-600 font-bold">{buergschaftText}</span>;
+                                        }
                                         
                                         if (openDeposit > 0) {
                                             return (

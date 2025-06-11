@@ -181,11 +181,17 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     tenant2Salutation: "Herr",
     tenant2FirstName: "",
     tenant2LastName: "",
-    tenant2BirthDate: "",
-    tenant2Address: "",
+    tenant2BirthDate: "",    tenant2Address: "",
     tenant2Email: "",
     tenant2Phone: "",
+    formBuergschaftLiegtVor: false,
+    formBuergschaftZurueckGesendetAm: "",
   });
+  
+  // State für Bürgschaft-Modal
+  const [showBuergschaftModal, setShowBuergschaftModal] = useState(false);
+  const [tempBuergschaftReturnDate, setTempBuergschaftReturnDate] = useState("");
+  
   // Undo/Redo
   const [history, setHistory] = useState<typeof currentState[]>([]);
   const [future, setFuture] = useState<typeof currentState[]>([]);
@@ -204,13 +210,49 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     setFuture([currentState, ...future]);
     setCurrentState(history[history.length - 1]);
     setHistory(history.slice(0, -1));
-  }
-  function redo() {
+  }  function redo() {
     if (future.length === 0) return;
     setHistory([...history, currentState]);
     setCurrentState(future[0]);
     setFuture(future.slice(1));
   }
+  // Handler für Bürgschaft-Checkbox
+  const handleBuergschaftChange = (checked: boolean) => {
+    console.log('handleBuergschaftChange called with:', checked);
+    console.log('Current state:', currentState.formBuergschaftLiegtVor);
+    
+    if (!checked && currentState.formBuergschaftLiegtVor) {
+      // Bürgschaft wird deaktiviert - Modal zeigen
+      console.log('Showing modal for deactivation');
+      setShowBuergschaftModal(true);
+    } else {
+      // Bürgschaft wird aktiviert oder war schon false
+      console.log('Activating or already false, updating state to:', checked);
+      handleChange('formBuergschaftLiegtVor', checked);
+      if (checked) {
+        // Beim Aktivieren das Rückgabedatum löschen
+        handleChange('formBuergschaftZurueckGesendetAm', '');
+      }
+    }
+  };
+
+  // Handler für Bürgschaft-Modal-Aktionen
+  const handleBuergschaftModalConfirm = () => {
+    handleChange('formBuergschaftLiegtVor', false);
+    if (tempBuergschaftReturnDate) {
+      handleChange('formBuergschaftZurueckGesendetAm', tempBuergschaftReturnDate);
+    } else {
+      handleChange('formBuergschaftZurueckGesendetAm', '');
+    }
+    setShowBuergschaftModal(false);
+    setTempBuergschaftReturnDate('');
+  };
+
+  const handleBuergschaftModalCancel = () => {
+    setShowBuergschaftModal(false);
+    setTempBuergschaftReturnDate('');
+  };
+
   // Automatische Mandatsreferenz
   useEffect(() => {
     if (!recordToUpdate) {
@@ -362,8 +404,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         }
         return { betrag: "", datum: "" };
       })
-          : [{ betrag: "", datum: "" }],
-        formKautionsauszahlungen: [{ betrag: "", datum: "" }], // Immer Default, da nicht im Datensatz
+          : [{ betrag: "", datum: "" }],        formKautionsauszahlungen: [{ betrag: "", datum: "" }], // Immer Default, da nicht im Datensatz
+        formBuergschaftLiegtVor: data.contract?.buergschaftLiegtVor || false,
+        formBuergschaftZurueckGesendetAm: data.contract?.buergschaftZurueckGesendetAm || "",
         formIban: data.payment?.iban || "",
         formDirectDebitMandateDate: data.payment?.directDebitMandateDate || "",
         formMandateReference: data.payment?.mandateReference || "",        formRentBase: data.rent?.base ? formatGermanNumber(data.rent.base) : "",
@@ -471,12 +514,22 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     rentBase +
     parseGermanNumber(currentState.formRentUtilities) +
     parseGermanNumber(currentState.formRentHeating) +
-    parkingRent;
-  // Korrektur: Offene Kaution nur anzeigen, wenn Kautionshöhe > 0
+    parkingRent;  // Korrektur: Offene Kaution nur anzeigen, wenn Kautionshöhe > 0
   const gezahlteKaution = currentState.formKautionszahlungen.reduce((sum, z) => sum + parseGermanNumber(z.betrag), 0);
   const ausgezahlteKaution = currentState.formKautionsauszahlungen.reduce((sum, z) => sum + parseGermanNumber(z.betrag), 0);
   const kautionHoehe = parseGermanNumber(currentState.formKautionHoehe);
-  const offeneKaution = kautionHoehe > 0 ? kautionHoehe - gezahlteKaution : 0;
+  
+  // Hilfsfunktion: Berechnung der offenen Kaution
+  const calculateOpenDeposit = (): number => {
+    // Wenn Bürgschaft vorliegt, ist die offene Kaution automatisch 0
+    if (currentState.formBuergschaftLiegtVor) {
+      return 0;
+    }
+    
+    return kautionHoehe > 0 ? kautionHoehe - gezahlteKaution : 0;
+  };
+  
+  const offeneKaution = calculateOpenDeposit();
   const nochNichtAusgezahlt = gezahlteKaution - ausgezahlteKaution;
 
   // Hilfsfunktion für Kautionszahlungen
@@ -1172,10 +1225,32 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                   disabled={!currentState.formRentBase}
                   className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 whitespace-nowrap"
                   title="Setze Kaution auf 3x Kaltmiete"
-                >
-                  3xKaltmiete
+                >                  3xKaltmiete
                 </button>
               </div>
+                {/* Bürgschaft Checkbox */}
+              <div className="flex items-center space-x-4 mt-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={currentState.formBuergschaftLiegtVor}
+                    onChange={(e) => {
+                      console.log('Checkbox clicked:', e.target.checked);
+                      handleBuergschaftChange(e.target.checked);
+                    }}
+                    className="w-5 h-5 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  <span className="text-gray-200 font-medium">Bürgschaft liegt vor</span>
+                </label>
+              </div>
+              
+              {currentState.formBuergschaftZurueckGesendetAm && (
+                <div className="mt-2 p-3 bg-green-100 border border-green-300 rounded-lg">
+                  <p className="text-green-700 text-sm">
+                    Bürgschaft zurück gesandt am: {new Date(currentState.formBuergschaftZurueckGesendetAm).toLocaleDateString('de-DE')}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           {/* Kautionszahlungen */}
@@ -1404,9 +1479,49 @@ export const RecordForm: React.FC<RecordFormProps> = ({
             >
               Abbrechen
             </button>
+          </div>        </div>
+      </form>
+
+      {/* Bürgschaft Modal */}
+      {showBuergschaftModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Bürgschaft entfernen</h3>
+            <p className="text-gray-700 mb-4">
+              Möchten Sie ein Rückgabedatum für die Bürgschaft angeben?
+            </p>
+            
+            <div className="mb-4">
+              <label className="block text-gray-700 font-medium mb-2">
+                Rückgabedatum (optional)
+              </label>
+              <input
+                type="date"
+                value={tempBuergschaftReturnDate}
+                onChange={(e) => setTempBuergschaftReturnDate(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={handleBuergschaftModalCancel}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleBuergschaftModalConfirm}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+              >
+                Bestätigen
+              </button>
+            </div>
           </div>
         </div>
-      </form>
+      )}
     </div>
   );
 };
