@@ -166,6 +166,37 @@ Die Rosenthaler Str. hat jetzt eine angepasste Startseitenansicht mit folgenden 
 - **Automatische Aktualisierung**: Sofortige Neuladung der Datenansicht
 - **Fehlerbehandlung**: Benutzerfreundliche Fehlermeldungen
 
+## Dropdown-Filterung Startseite ✅ ERLEDIGT
+
+## **INTELLIGENTES DROPDOWN-MENÜSYSTEM IMPLEMENTIERT:**
+
+### **Objekt-Filter-Dropdown:**
+- ✅ Checkbox-Menü für alle 4 Objekte (TRI, TRI-P, PAS, RITA)
+- ✅ "Alle auswählen" / "Alle abwählen" Funktionalität
+- ✅ Statusanzeige der Auswahl (z.B. "2 Objekte ausgewählt", "Alle Objekte")
+- ✅ Außerhalb-klicken schließt das Dropdown automatisch
+- ✅ Standardansicht zeigt alle Objekte an
+
+### **Erweiterte Datumsauswahl:**
+- ✅ Dropdown statt einfachem Datumseingabefeld
+- ✅ Zeigt nur Daten an, für die Datensätze in den ausgewählten Objekten existieren
+- ✅ Sortierung: neueste Daten zuerst
+- ✅ Deutsche Formatierung (Wochentag, Datum)
+- ✅ Standarddatum ist heute
+
+### **Intelligente Datenfilterung:**
+- ✅ Sammelt verfügbare Daten nur aus ausgewählten Objekten
+- ✅ Filtert Datensätze basierend auf Objektauswahl
+- ✅ Automatische Aktualisierung bei Auswahländerung
+- ✅ Initialer Ladevorgang beim App-Start
+
+### **Technische Implementierung:**
+- ✅ Neue State-Variablen: `selectedProperties`, `availableDates`, `showPropertyDropdown`
+- ✅ Handler-Funktionen für Objektauswahl und Dropdown-Steuerung
+- ✅ Erweiterte `fetchRecords()` Funktion mit Datumssammlung
+- ✅ Dependency Array aktualisiert für reaktive Filterung
+- ✅ Responsive Design für verschiedene Bildschirmgrößen
+
 Startseite Pasewalker
 In der Pasewalker Str. müssten wir die vorhandenen Daten etwas umformen. Aus dem Datenimport kommt dort für die ersten 10 Einheiten (Wohnungen im Mehrfamilienhaus) eine Wohnungs-ID 1 - 10 und eine Lage mit Etage und Lage heraus. Also Beispielsweise Wohnung 1 EG rechts. Ab der 11. Einheit wird bei der Lage jeweils eine Adresse ausgegeben Rosenthaler Str. 1 a - 1 f. Hier würde ich gerne die letzten 3 Zeichen der Zelle jeweils zur Wohnungs-ID machen. Also 1 a, 1 b, 1 c usw, Daten für die "Lage" werden für die Einfamilienhäuser 1 a - 1 f nicht benötigt, dieses Feld kann dort leer bleiben. Die erste Spalte soll also in diesem Objekt die Wohnungs-ID bzw. die Hausnummer (1 a - 1-f) sein. 
 In der 2. Spalte die Lage (bzw. für die 1 a - 1 f ein freies Feld). danach siehe unten.
